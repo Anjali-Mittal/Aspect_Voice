@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: aspectvoice
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python run.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      # Render injects PORT automatically at runtime; app/config.py reads it.
+      - key: HOST
+        value: 0.0.0.0
+      - key: CORS_ORIGINS
+        sync: false          # set to your frontend's URL after first deploy
+      - key: DATABASE_URL
+        sync: false          # NeonDB connection string, postgresql://...
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false           # fallback LLM provider if Groq is rate-limited
+      - key: REDDIT_CLIENT_ID
+        sync: false
+      - key: REDDIT_CLIENT_SECRET
+        sync: false
+      - key: REDDIT_USER_AGENT
+        sync: false
+      - key: YOUTUBE_API_KEY
+        sync: false
+      - key: SCHEDULER_SECRET
+        sync: false          # any random string — shared secret with cron-job.org, see DEPLOYMENT.md

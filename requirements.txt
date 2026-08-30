@@ -1,0 +1,15 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+sqlalchemy==2.0.35
+psycopg2-binary==2.9.9
+pyyaml==6.0.2
+python-dotenv==1.0.1
+praw==7.7.1
+google-api-python-client
+youtube-transcript-api==1.2.4
+groq==1.6.0
+google-genai==2.19.0
+beautifulsoup4==4.12.3
+requests==2.32.3
+rapidfuzz==3.10.1
+json-repair==0.58.7

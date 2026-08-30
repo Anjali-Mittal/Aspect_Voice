@@ -1,0 +1,92 @@
+# Everything here is runtime config. No vehicle name, feature list,
+# subreddit, or query string lives in code. Change this file only.
+
+target:
+  product_name: "Hero Xtreme 125R"
+  aliases: ["Xtreme 125R", "Hero Xtreme125R"]
+  category: "motorcycle"
+
+sources:
+  reddit:
+    enabled: true
+    subreddits: ["indianbikes", "TwoWheelersIndia", "motorcycles"]
+    search_terms: ["${target.product_name}"]
+    post_limit: 100
+    comment_limit_per_post: 50
+
+  youtube:
+    enabled: true
+    search_terms: ["${target.product_name} review", "${target.product_name} problems"]
+    max_videos: 20
+    max_comments_per_video: 100
+
+  youtube_transcripts:
+    enabled: true
+    max_videos: 15          # keep lower than youtube.max_videos — transcript fetch is one extra network call per video, no quota cost but slower
+    chunk_words: 150        # ~150 words per chunk, comment-sized for aspect extraction
+
+  google_reviews:
+    enabled: false   # needs a paid/CC-gated API; disabled by default, pluggable later
+
+  review_sites:
+    enabled: true
+    sites:
+      - name: "bikedekho"
+        url: "https://www.bikedekho.com/hero-bikes/xtreme-125r/reviews"
+        extraction_mode: "jsonld"     # reviews embedded as schema.org Review objects
+      - name: "zigwheels"
+        url: "https://www.zigwheels.com/newbikes/hero/xtreme-125r/reviews"
+        extraction_mode: "css"
+        review_container_selector: "div.ncmt-c.fl-wf.clr.bdr-b"
+        text_selector: "[class^='ar-text-']"
+        author_selector: "span.nw-profileName"
+        max_pages: 1   # no pagination URL param found on page; rest likely loads via
+                        # JS/AJAX "load more" — needs that endpoint identified to go beyond
+                        # the ~13 reviews rendered server-side
+        delay_seconds: 2
+      - name: "bikewale"
+        url: "https://www.bikewale.com/hero-bikes/xtreme-125r/reviews/"
+        extraction_mode: "jsonld"     # site's CSS classes are build-hashed, unscrapable by
+                                       # selector; jsonld only carries 1 sample review (SEO
+                                       # rich snippet), so this source is low-volume by design
+
+llm:
+  provider_priority: ["groq", "gemini"]   # groq exhausted (rate limit/error) -> falls to gemini, and vice versa
+  groq:
+    # llama-3.3-70b-versatile and llama-3.1-8b-instant were deprecated by
+    # Groq (announced Jun 17 2026, shut down Aug 16 2026). Migrated to their
+    # official replacements per https://console.groq.com/docs/deprecations.
+    # Both are reasoning models — see reasoning_format="hidden" in
+    # app/llm/client.py, which is what actually suppresses the <think>
+    # blocks these models emit by default; don't rely on model_priority
+    # alone to fix that if you change this list.
+    model_priority: ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]
+  gemini:
+    # Google AI Studio free tier — no card, no expiry (only linking Cloud
+    # billing would ever ask for a card, which this project never does).
+    # gemini-2.0-flash was shut down Jun 1 2026 — don't fall back to it.
+    # Sticking to the 2.5 generation (proven, GA, free-tier) rather than
+    # the newer 3.x Flash line, which is still shipping new point releases
+    # every few weeks as of Aug 2026 — less settled for a POC.
+    model_priority: ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.5-flash-lite"]
+  max_retries: 3
+  temperature: 0.2
+
+pipeline:
+  relevance_filter_batch_size: 20
+  ontology_discovery_sample_size: 300   # total items considered, drawn randomly
+  ontology_discovery_batch_size: 50     # items per LLM call — discovery runs in
+                                          # chunks this size, then a cheap final
+                                          # call merges/dedupes across chunks,
+                                          # instead of one huge single prompt
+  aspect_extraction_batch_size: 10
+  min_cluster_size: 3
+  trend_window_days: 30
+  high_priority_threshold: 0.6   # priority_score at/above this = "high priority" in /overview KPIs
+
+storage:
+  db_url: "${DATABASE_URL}"   # NeonDB Postgres connection string, from env — never hardcoded
+
+schedule:
+  enabled: true
+  interval_days: 30   # run full pipeline automatically no more than once per this many days
