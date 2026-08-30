@@ -1,39 +1,14 @@
 # Everything here is runtime config. No vehicle name, feature list,
 # subreddit, or query string lives in code. Change this file only.
 
-target:
-  product_name: "Hero Xtreme 125R"
-  aliases: ["Xtreme 125R", "Hero Xtreme125R"]
-  category: "motorcycle"
-
-sources:
-  reddit:
-    enabled: true
-    subreddits: ["indianbikes", "TwoWheelersIndia", "motorcycles"]
-    search_terms: ["${target.product_name}"]
-    post_limit: 100
-    comment_limit_per_post: 50
-
-  youtube:
-    enabled: true
-    search_terms: ["${target.product_name} review", "${target.product_name} problems"]
-    max_videos: 20
-    max_comments_per_video: 100
-
-  youtube_transcripts:
-    enabled: true
-    max_videos: 15          # keep lower than youtube.max_videos — transcript fetch is one extra network call per video, no quota cost but slower
-    chunk_words: 150        # ~150 words per chunk, comment-sized for aspect extraction
-
-  google_reviews:
-    enabled: false   # needs a paid/CC-gated API; disabled by default, pluggable later
-
-  review_sites:
-    enabled: true
-    sites:
+targets:
+  - product_name: "Hero Xtreme 125R"
+    aliases: ["Xtreme 125R", "Hero Xtreme125R"]
+    category: "motorcycle"
+    review_sites:
       - name: "bikedekho"
         url: "https://www.bikedekho.com/hero-bikes/xtreme-125r/reviews"
-        extraction_mode: "jsonld"     # reviews embedded as schema.org Review objects
+        extraction_mode: "jsonld"
       - name: "zigwheels"
         url: "https://www.zigwheels.com/newbikes/hero/xtreme-125r/reviews"
         extraction_mode: "css"
@@ -49,6 +24,52 @@ sources:
         extraction_mode: "jsonld"     # site's CSS classes are build-hashed, unscrapable by
                                        # selector; jsonld only carries 1 sample review (SEO
                                        # rich snippet), so this source is low-volume by design
+
+  - product_name: "Hero Vida V2"
+    aliases: ["Vida V2", "Hero Vida", "Vida electric scooter"]
+    category: "electric scooter"
+    review_sites:
+      - name: "bikedekho"
+        url: "https://www.bikedekho.com/vida/vida-v2/reviews"
+        extraction_mode: "jsonld"
+      - name: "zigwheels"
+        url: "https://www.zigwheels.com/user-reviews/vida/v2"
+        extraction_mode: "css"
+        review_container_selector: "div.ncmt-c.fl-wf.clr.bdr-b"
+        text_selector: "[class^='ar-text-']"
+        author_selector: "span.nw-profileName"
+        max_pages: 1   # URL confirmed live, but CSS selectors were only verified against
+                        # the Xtreme 125R page layout, not this one — confirm they still
+                        # match before relying on volume from this source
+        delay_seconds: 2
+      - name: "bikewale"
+        url: "https://www.bikewale.com/vida-bikes/v2/reviews/"
+        extraction_mode: "jsonld"
+
+sources:
+  reddit:
+    enabled: true
+    subreddits: ["indianbikes", "TwoWheelersIndia", "motorcycles"]
+    search_terms: ["{product_name}"]        # {product_name} filled in per-target at runtime, not at config load
+    post_limit: 100
+    comment_limit_per_post: 50
+
+  youtube:
+    enabled: true
+    search_terms: ["{product_name} review", "{product_name} problems"]
+    max_videos: 20
+    max_comments_per_video: 100
+
+  youtube_transcripts:
+    enabled: true
+    max_videos: 15          # keep lower than youtube.max_videos — transcript fetch is one extra network call per video, no quota cost but slower
+    chunk_words: 150        # ~150 words per chunk, comment-sized for aspect extraction
+
+  google_reviews:
+    enabled: false   # needs a paid/CC-gated API; disabled by default, pluggable later
+
+  review_sites:
+    enabled: true    # per-target site lists live under targets[].review_sites above
 
 llm:
   provider_priority: ["groq", "gemini"]   # groq exhausted (rate limit/error) -> falls to gemini, and vice versa

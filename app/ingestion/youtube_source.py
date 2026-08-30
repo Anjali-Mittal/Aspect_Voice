@@ -5,7 +5,7 @@ from datetime import datetime
 from app.config import get_config, get_secret
 
 
-def fetch_youtube_feedback():
+def fetch_youtube_feedback(target: dict):
     from googleapiclient.discovery import build
 
     cfg = get_config()
@@ -14,10 +14,11 @@ def fetch_youtube_feedback():
         return []
 
     youtube = build("youtube", "v3", developerKey=get_secret("YOUTUBE_API_KEY"))
-    product_name = cfg["target"]["product_name"]
+    product_name = target["product_name"]
     items = []
 
     for term in ycfg["search_terms"]:
+        term = term.format(product_name=product_name)
         search_resp = youtube.search().list(
             q=term, part="id,snippet", type="video", maxResults=ycfg["max_videos"]
         ).execute()

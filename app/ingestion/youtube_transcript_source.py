@@ -31,7 +31,7 @@ def _chunk_transcript(segments, chunk_words: int):
     return chunks
 
 
-def fetch_youtube_transcript_feedback():
+def fetch_youtube_transcript_feedback(target: dict):
     from googleapiclient.discovery import build
     from youtube_transcript_api import YouTubeTranscriptApi
     from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
@@ -46,11 +46,12 @@ def fetch_youtube_transcript_feedback():
     max_videos = tcfg.get("max_videos", ycfg["max_videos"])
 
     youtube = build("youtube", "v3", developerKey=get_secret("YOUTUBE_API_KEY"))
-    product_name = cfg["target"]["product_name"]
+    product_name = target["product_name"]
     ytt = YouTubeTranscriptApi()
     items = []
 
     for term in ycfg["search_terms"]:
+        term = term.format(product_name=product_name)
         search_resp = youtube.search().list(
             q=term, part="id,snippet", type="video", maxResults=max_videos
         ).execute()

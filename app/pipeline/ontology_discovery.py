@@ -1,4 +1,5 @@
 import random
+from collections import defaultdict
 from app.config import get_config
 from app.models.db import CleanFeedback, FeatureOntology, get_session_factory
 from app.llm.client import call_llm_json
@@ -52,37 +53,43 @@ def run_ontology_discovery():
         session.close()
         return {"features": 0, "note": "no clean feedback yet, run ingestion + relevance_filter + cleaning first"}
 
-    sample = random.sample(clean, min(sample_size, len(clean)))
-    product_name = sample[0].product_name
+    by_product = defaultdict(list)
+    for item in clean:
+        by_product[item.product_name].append(item)
 
-    # Chunk into batches so no single LLM call ever gets an unbounded prompt —
-    # a 300-item sample in one call would be ~30k tokens; capped at batch_size
-    # per call instead (default 50 -> ~5k tokens).
-    batches = [sample[i:i + batch_size] for i in range(0, len(sample), batch_size)]
+    results = {}
+    for product_name, rows in by_product.items():
+        sample = random.sample(rows, min(sample_size, len(rows)))
 
-    candidates: list[dict] = []
-    for batch in batches:
-        candidates.extend(_discover_from_batch(batch, product_name))
+        # Chunk into batches so no single LLM call ever gets an unbounded prompt —
+        # a 300-item sample in one call would be ~30k tokens; capped at batch_size
+        # per call instead (default 50 -> ~5k tokens).
+        batches = [sample[i:i + batch_size] for i in range(0, len(sample), batch_size)]
 
-    if len(batches) > 1:
-        # merge/dedupe across batches — this call only sees short names +
-        # descriptions, never the original feedback text, so it stays cheap
-        # even with hundreds of candidates
-        candidate_lines = "\n".join(f"- {c['name']}: {c.get('description', '')}" for c in candidates)
-        merge_result = call_llm_json(MERGE_PROMPT.format(candidates=candidate_lines))
-        final_features = merge_result.get("features", [])
-    else:
-        final_features = candidates
+        candidates: list[dict] = []
+        for batch in batches:
+            candidates.extend(_discover_from_batch(batch, product_name))
 
-    # replace existing ontology for this product (rediscovery overwrites)
-    session.query(FeatureOntology).filter_by(product_name=product_name).delete()
-    for f in final_features:
-        session.add(FeatureOntology(
-            product_name=product_name,
-            feature_name=f["name"],
-            description=f.get("description", ""),
-        ))
-    session.commit()
-    count = len(final_features)
+        if len(batches) > 1:
+            # merge/dedupe across batches — this call only sees short names +
+            # descriptions, never the original feedback text, so it stays cheap
+            # even with hundreds of candidates
+            candidate_lines = "\n".join(f"- {c['name']}: {c.get('description', '')}" for c in candidates)
+            merge_result = call_llm_json(MERGE_PROMPT.format(candidates=candidate_lines))
+            final_features = merge_result.get("features", [])
+        else:
+            final_features = candidates
+
+        # replace existing ontology for this product (rediscovery overwrites)
+        session.query(FeatureOntology).filter_by(product_name=product_name).delete()
+        for f in final_features:
+            session.add(FeatureOntology(
+                product_name=product_name,
+                feature_name=f["name"],
+                description=f.get("description", ""),
+            ))
+        session.commit()
+        results[product_name] = {"features": len(final_features), "batches_processed": len(batches)}
+
     session.close()
-    return {"features": count, "batches_processed": len(batches)}
+    return {"per_product": results}

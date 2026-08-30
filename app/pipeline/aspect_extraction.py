@@ -1,6 +1,7 @@
 from app.config import get_config
 from app.models.db import CleanFeedback, FeatureOntology, AspectMention, get_session_factory
 from app.llm.client import call_llm_json
+from collections import defaultdict
 
 PROMPT_TEMPLATE = """Product: {product_name}
 Known feature list (use ONLY these names, do not invent new ones):
@@ -36,38 +37,43 @@ def run_aspect_extraction():
         session.close()
         return {"mentions_created": 0}
 
-    product_name = pending[0].product_name
-    features = session.query(FeatureOntology).filter_by(product_name=product_name).all()
-    if not features:
-        session.close()
-        return {"error": "no feature ontology yet, run ontology_discovery first"}
+    by_product = defaultdict(list)
+    for item in pending:
+        by_product[item.product_name].append(item)
 
-    feature_list = "\n".join(f"- {f.feature_name}: {f.description}" for f in features)
     created = 0
+    skipped_products = {}
+    for product_name, rows in by_product.items():
+        features = session.query(FeatureOntology).filter_by(product_name=product_name).all()
+        if not features:
+            skipped_products[product_name] = "no feature ontology yet, run ontology_discovery first"
+            continue
 
-    for i in range(0, len(pending), batch_size):
-        batch = pending[i:i + batch_size]
-        snippets = "\n".join(f"{j}. {item.clean_text[:500]}" for j, item in enumerate(batch))
-        prompt = PROMPT_TEMPLATE.format(
-            product_name=product_name, feature_list=feature_list, n=len(batch), snippets=snippets
-        )
-        result = call_llm_json(prompt)
-        for r in result.get("results", []):
-            idx = r["i"]
-            if idx >= len(batch):
-                continue
-            for m in r.get("mentions", []):
-                if not isinstance(m, dict) or "feature" not in m:
+        feature_list = "\n".join(f"- {f.feature_name}: {f.description}" for f in features)
+
+        for i in range(0, len(rows), batch_size):
+            batch = rows[i:i + batch_size]
+            snippets = "\n".join(f"{j}. {item.clean_text[:500]}" for j, item in enumerate(batch))
+            prompt = PROMPT_TEMPLATE.format(
+                product_name=product_name, feature_list=feature_list, n=len(batch), snippets=snippets
+            )
+            result = call_llm_json(prompt)
+            for r in result.get("results", []):
+                idx = r["i"]
+                if idx >= len(batch):
                     continue
-                session.add(AspectMention(
-                    clean_feedback_id=batch[idx].id,
-                    feature_name=m["feature"],
-                    sentiment=m.get("sentiment", "neutral"),
-                    severity=float(m.get("severity", 0)),
-                    snippet=m.get("snippet", ""),
-                ))
-                created += 1
-        session.commit()
+                for m in r.get("mentions", []):
+                    if not isinstance(m, dict) or "feature" not in m:
+                        continue
+                    session.add(AspectMention(
+                        clean_feedback_id=batch[idx].id,
+                        feature_name=m["feature"],
+                        sentiment=m.get("sentiment", "neutral"),
+                        severity=float(m.get("severity", 0)),
+                        snippet=m.get("snippet", ""),
+                    ))
+                    created += 1
+            session.commit()
 
     session.close()
-    return {"mentions_created": created}
+    return {"mentions_created": created, "skipped_products": skipped_products}

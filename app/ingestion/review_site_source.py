@@ -134,15 +134,15 @@ def _scrape_css(site_cfg: dict, product_name: str) -> list[dict]:
 _MODE_FN = {"jsonld": _scrape_jsonld, "css": _scrape_css}
 
 
-def fetch_review_site_feedback() -> list[dict]:
+def fetch_review_site_feedback(target: dict) -> list[dict]:
     cfg = get_config()
     rcfg = cfg["sources"].get("review_sites", {})
     if not rcfg.get("enabled"):
         return []
 
-    product_name = cfg["target"]["product_name"]
+    product_name = target["product_name"]
     all_items = []
-    for site_cfg in rcfg.get("sites", []):
+    for site_cfg in target.get("review_sites", []):
         fn = _MODE_FN.get(site_cfg["extraction_mode"])
         if not fn:
             continue

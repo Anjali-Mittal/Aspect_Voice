@@ -19,16 +19,17 @@ def run_ingestion():
     session = Session()
 
     inserted = 0
-    for source_name, fetch_fn in SOURCE_FETCHERS.items():
-        if not cfg["sources"].get(source_name, {}).get("enabled"):
-            continue
-        for item in fetch_fn():
-            exists = session.query(RawFeedback).filter_by(source_id=item["source_id"]).first()
-            if exists:
+    for target in cfg["targets"]:
+        for source_name, fetch_fn in SOURCE_FETCHERS.items():
+            if not cfg["sources"].get(source_name, {}).get("enabled"):
                 continue
-            session.add(RawFeedback(**item))
-            inserted += 1
-        session.commit()
+            for item in fetch_fn(target):
+                exists = session.query(RawFeedback).filter_by(source_id=item["source_id"]).first()
+                if exists:
+                    continue
+                session.add(RawFeedback(**item))
+                inserted += 1
+            session.commit()
 
     session.close()
     return {"inserted": inserted}

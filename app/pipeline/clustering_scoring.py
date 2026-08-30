@@ -93,98 +93,98 @@ def run_clustering_and_scoring():
         session.close()
         return {"clusters": 0, "note": "no negative mentions yet"}
 
-    by_feature = defaultdict(list)
+    by_product_feature = defaultdict(lambda: defaultdict(list))
     for m in negatives:
-        by_feature[m.feature_name].append(m)
-
-    product_name = session.query(CleanFeedback).filter_by(
-        id=negatives[0].clean_feedback_id
-    ).first().product_name
-
-    # dropping+rebuilding clusters also orphans old membership rows for this product;
-    # delete members of the clusters we're about to delete, then the clusters themselves
-    old_cluster_ids = [
-        c.id for c in session.query(IssueCluster.id).filter_by(product_name=product_name)
-    ]
-    if old_cluster_ids:
-        session.query(IssueClusterMember).filter(
-            IssueClusterMember.issue_cluster_id.in_(old_cluster_ids)
-        ).delete(synchronize_session=False)
-    session.query(IssueCluster).filter_by(product_name=product_name).delete()
+        if not m.clean_feedback:
+            continue
+        by_product_feature[m.clean_feedback.product_name][m.feature_name].append(m)
 
     total_clusters = 0
-    skipped_features = {}  # feature_name -> reason, surfaced in the return value
+    skipped_features = {}  # "product | feature" -> reason, surfaced in the return value
     now = datetime.utcnow()
 
-    for feature_name, mentions in by_feature.items():
-        if len(mentions) < min_cluster_size:
-            skipped_features[feature_name] = (
-                f"only {len(mentions)} negative mentions, need {min_cluster_size}"
-            )
-            continue
+    for product_name, by_feature in by_product_feature.items():
+        # dropping+rebuilding clusters also orphans old membership rows for this product;
+        # delete members of the clusters we're about to delete, then the clusters themselves
+        old_cluster_ids = [
+            c.id for c in session.query(IssueCluster.id).filter_by(product_name=product_name)
+        ]
+        if old_cluster_ids:
+            session.query(IssueClusterMember).filter(
+                IssueClusterMember.issue_cluster_id.in_(old_cluster_ids)
+            ).delete(synchronize_session=False)
+        session.query(IssueCluster).filter_by(product_name=product_name).delete()
 
-        snippets = "\n".join(
-            f"{j}. {m.snippet or m.clean_feedback.clean_text[:200]}" for j, m in enumerate(mentions)
-        )
-        prompt = CLUSTER_PROMPT.format(feature_name=feature_name, n=len(mentions), snippets=snippets)
-        try:
-            result = call_llm_json(prompt)
-        except Exception as e:
-            logger.error("clustering LLM call failed for feature=%s: %s", feature_name, e)
-            skipped_features[feature_name] = f"LLM call failed: {e}"
-            continue
-
-        issues_in = result.get("issues", [])
-        if not issues_in:
-            skipped_features[feature_name] = "LLM returned zero issues for this feature"
-
-        for issue in issues_in:
-            members = [mentions[idx] for idx in issue.get("member_indices", []) if idx < len(mentions)]
-            if len(members) < min_cluster_size:
-                logger.warning(
-                    "clustering: dropped issue '%s' for feature=%s — only %d members, need %d",
-                    issue.get("summary", ""), feature_name, len(members), min_cluster_size,
+        for feature_name, mentions in by_feature.items():
+            skip_key = f"{product_name} | {feature_name}"
+            if len(mentions) < min_cluster_size:
+                skipped_features[skip_key] = (
+                    f"only {len(mentions)} negative mentions, need {min_cluster_size}"
                 )
                 continue
 
-            avg_severity = sum(m.severity or 0 for m in members) / len(members)
-
-            recent_count = sum(
-                1 for m in members
-                if m.clean_feedback and m.clean_feedback.created_at
-                and m.clean_feedback.created_at >= now - timedelta(days=window_days)
+            snippets = "\n".join(
+                f"{j}. {m.snippet or m.clean_feedback.clean_text[:200]}" for j, m in enumerate(mentions)
             )
-            recency_boost = recent_count / len(members)
+            prompt = CLUSTER_PROMPT.format(feature_name=feature_name, n=len(mentions), snippets=snippets)
+            try:
+                result = call_llm_json(prompt)
+            except Exception as e:
+                logger.error("clustering LLM call failed for product=%s feature=%s: %s", product_name, feature_name, e)
+                skipped_features[skip_key] = f"LLM call failed: {e}"
+                continue
 
-            # deterministic scoring formula: volume + severity + recency trend
-            priority_score = (
-                0.4 * min(len(members) / 20, 1.0)
-                + 0.4 * avg_severity
-                + 0.2 * recency_boost
-            )
+            issues_in = result.get("issues", [])
+            if not issues_in:
+                skipped_features[skip_key] = "LLM returned zero issues for this feature"
 
-            cluster = IssueCluster(
-                product_name=product_name,
-                feature_name=feature_name,
-                issue_summary=issue.get("summary", ""),
-                mention_count=len(members),
-                avg_severity=round(avg_severity, 3),
-                priority_score=round(priority_score, 3),
-                trend=_compute_trend(members, window_days),
-                confidence=_compute_confidence(len(members)),
-                primary_context=issue.get("primary_context") or None,
-                recommended_investigation=issue.get("recommended_investigation") or None,
-                representative_snippets=[m.snippet for m in members[:5]],
-            )
-            session.add(cluster)
-            session.flush()  # need cluster.id for the membership rows below
+            for issue in issues_in:
+                members = [mentions[idx] for idx in issue.get("member_indices", []) if idx < len(mentions)]
+                if len(members) < min_cluster_size:
+                    logger.warning(
+                        "clustering: dropped issue '%s' for product=%s feature=%s — only %d members, need %d",
+                        issue.get("summary", ""), product_name, feature_name, len(members), min_cluster_size,
+                    )
+                    continue
 
-            # full evidence chain: every member mention linked to this cluster,
-            # not just the top-5 representative snippets
-            for m in members:
-                session.add(IssueClusterMember(issue_cluster_id=cluster.id, aspect_mention_id=m.id))
+                avg_severity = sum(m.severity or 0 for m in members) / len(members)
 
-            total_clusters += 1
+                recent_count = sum(
+                    1 for m in members
+                    if m.clean_feedback and m.clean_feedback.created_at
+                    and m.clean_feedback.created_at >= now - timedelta(days=window_days)
+                )
+                recency_boost = recent_count / len(members)
+
+                # deterministic scoring formula: volume + severity + recency trend
+                priority_score = (
+                    0.4 * min(len(members) / 20, 1.0)
+                    + 0.4 * avg_severity
+                    + 0.2 * recency_boost
+                )
+
+                cluster = IssueCluster(
+                    product_name=product_name,
+                    feature_name=feature_name,
+                    issue_summary=issue.get("summary", ""),
+                    mention_count=len(members),
+                    avg_severity=round(avg_severity, 3),
+                    priority_score=round(priority_score, 3),
+                    trend=_compute_trend(members, window_days),
+                    confidence=_compute_confidence(len(members)),
+                    primary_context=issue.get("primary_context") or None,
+                    recommended_investigation=issue.get("recommended_investigation") or None,
+                    representative_snippets=[m.snippet for m in members[:5]],
+                )
+                session.add(cluster)
+                session.flush()  # need cluster.id for the membership rows below
+
+                # full evidence chain: every member mention linked to this cluster,
+                # not just the top-5 representative snippets
+                for m in members:
+                    session.add(IssueClusterMember(issue_cluster_id=cluster.id, aspect_mention_id=m.id))
+
+                total_clusters += 1
 
     session.commit()
     session.close()

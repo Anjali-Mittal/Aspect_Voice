@@ -11,7 +11,7 @@ from datetime import datetime
 from app.config import get_config
 
 
-def fetch_reddit_feedback():
+def fetch_reddit_feedback(target: dict):
     cfg = get_config()
     rcfg = cfg["sources"]["reddit"]
     if not rcfg["enabled"]:
@@ -36,11 +36,12 @@ def fetch_reddit_feedback():
     )
 
     items = []
-    product_name = cfg["target"]["product_name"]
+    product_name = target["product_name"]
 
     for subreddit_name in rcfg["subreddits"]:
         subreddit = reddit.subreddit(subreddit_name)
         for term in rcfg["search_terms"]:
+            term = term.format(product_name=product_name)
             for submission in subreddit.search(term, limit=rcfg["post_limit"]):
                 items.append({
                     "source": "reddit",
