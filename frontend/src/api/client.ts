@@ -6,6 +6,15 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000
 
 export const api = axios.create({ baseURL: API_BASE_URL });
 
+export async function checkHealth(): Promise<boolean> {
+  try {
+    const { data } = await api.get<{ status: string }>("/health", { timeout: 15000 });
+    return data?.status === "ok";
+  } catch {
+    return false;
+  }
+}
+
 export interface SentimentPct {
   positive: number;
   neutral: number;
