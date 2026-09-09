@@ -106,25 +106,6 @@ export function EvidenceExplorerPage({ issueId, onClose }: Props) {
               </div>
             )}
 
-            {/* Primary context + Recommendation — clearly separated as decision support, section 7/9.2 */}
-            {(detail.primary_context || detail.recommended_investigation) && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-                {detail.primary_context && (
-                  <div className="mb-2">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-amber-800">Primary Context</div>
-                    <div className="text-sm text-amber-900">{detail.primary_context}</div>
-                  </div>
-                )}
-                {detail.recommended_investigation && (
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-wide text-amber-800">
-                      Recommendation (decision support, not a diagnosis)
-                    </div>
-                    <div className="text-sm text-amber-900">{detail.recommended_investigation}</div>
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* Evidence list — Observed vs AI Interpretation, section 9.2 */}
             <div>
