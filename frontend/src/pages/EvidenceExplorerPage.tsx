@@ -65,8 +65,11 @@ export function EvidenceExplorerPage({ issueId, onClose }: Props) {
                   Priority {Math.round(detail.priority_score * 100)}/100
                 </span>
                 <TrendBadge trend={detail.trend} />
-                <span className="rounded-full border border-slate-200 px-2.5 py-1 text-xs text-slate-500">
-                  Confidence {Math.round(detail.confidence * 100)}%
+                <span
+                  className="rounded-full border border-slate-200 px-2.5 py-1 text-xs text-slate-500"
+                  title="Based on how much supporting evidence exists (mention volume), not a statistical confidence interval"
+                >
+                  Evidence strength {Math.round(detail.confidence * 100)}%
                 </span>
               </div>
             </div>
@@ -119,9 +122,8 @@ export function EvidenceExplorerPage({ issueId, onClose }: Props) {
                     <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
                       {item.ai_interpretation.sentiment && (
                         <span
-                          className={`rounded px-2 py-0.5 font-medium capitalize ${
-                            SENTIMENT_STYLES[item.ai_interpretation.sentiment] ?? SENTIMENT_STYLES.neutral
-                          }`}
+                          className={`rounded px-2 py-0.5 font-medium capitalize ${SENTIMENT_STYLES[item.ai_interpretation.sentiment] ?? SENTIMENT_STYLES.neutral
+                            }`}
                         >
                           {item.ai_interpretation.sentiment}
                         </span>

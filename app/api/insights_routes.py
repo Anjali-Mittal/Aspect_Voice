@@ -126,6 +126,7 @@ def list_issues(
         "priority_score": r.priority_score,
         "trend": r.trend,
         "confidence": r.confidence,
+        "confidence_basis": "evidence_volume",  # not a statistical measure — see DASHBOARD.md section 15
         "examples": r.representative_snippets,
     } for r in rows]
 
@@ -170,6 +171,7 @@ def issue_detail(issue_id: int):
         "priority_score": cluster.priority_score,
         "trend": cluster.trend,
         "confidence": cluster.confidence,
+        "confidence_basis": "evidence_volume",  # not a statistical measure — see DASHBOARD.md section 15
         "primary_context": cluster.primary_context,
         "recommended_investigation": cluster.recommended_investigation,
         "source_group_count": source_group_count,

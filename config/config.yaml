@@ -46,6 +46,35 @@ targets:
         url: "https://www.bikewale.com/vida-bikes/v2/reviews/"
         extraction_mode: "jsonld"
 
+  - product_name: "Honda Activa 6G"
+    aliases: ["Activa 6G", "Honda Activa", "Activa"]
+    category: "scooter"
+    # Picked deliberately as the strong-positive-sentiment comparison point —
+    # 4.4/5 over 970 reviews on BikeWale (769 positive / 201 critical) at
+    # selection time, vs. Xtreme 125R's mixed sentiment. Useful for sanity-
+    # checking the pipeline: if a known-mostly-positive product comes out
+    # looking mostly negative after aspect extraction, that's a pipeline bug,
+    # not a real finding.
+    review_sites:
+      - name: "bikedekho"
+        url: "https://www.bikedekho.com/honda/activa/reviews"
+        extraction_mode: "jsonld"
+      - name: "zigwheels"
+        url: "https://www.zigwheels.com/user-reviews/honda/activa-6g"
+        extraction_mode: "css"
+        review_container_selector: "div.ncmt-c.fl-wf.clr.bdr-b"
+        text_selector: "[class^='ar-text-']"
+        author_selector: "span.nw-profileName"
+        max_pages: 1   # selectors only verified against Xtreme 125R's page layout —
+                        # confirm they still match this page before trusting volume here
+        delay_seconds: 2
+      - name: "bikewale"
+        url: "https://www.bikewale.com/honda-bikes/activa-6g/reviews/"
+        extraction_mode: "jsonld"   # URL follows the same /reviews/ pattern as the other
+                                     # two targets but wasn't hit directly to confirm it
+                                     # resolves (vs. reviews living on the base model page) —
+                                     # verify before relying on volume from this source
+
 sources:
   reddit:
     enabled: true

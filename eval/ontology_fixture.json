@@ -1,0 +1,18 @@
+{
+  "_note": "Frozen feature list used ONLY for grading the eval set below. Deliberately separate from the live DB ontology so eval scores measure extraction accuracy, not ontology drift between runs. If you change this list, you must re-label eval_set.csv to match.",
+  "product_name": "Hero Xtreme 125R",
+  "features": [
+    {"name": "braking", "description": "Brake feel, stopping power, brake noise"},
+    {"name": "mileage", "description": "Fuel efficiency, km per liter"},
+    {"name": "seat comfort", "description": "Seat cushioning, riding posture comfort"},
+    {"name": "switch quality", "description": "Physical feel/build of handlebar switches"},
+    {"name": "headlight throw", "description": "Headlight brightness and night visibility"},
+    {"name": "service experience", "description": "Dealer service quality, wait times, staff behavior"},
+    {"name": "engine performance", "description": "Power delivery, acceleration, refinement"},
+    {"name": "build quality", "description": "Fit, finish, material quality, panel gaps"},
+    {"name": "vibration", "description": "Engine/handlebar/footpeg vibration at speed"},
+    {"name": "pillion comfort", "description": "Comfort for the passenger seat"},
+    {"name": "price value", "description": "Value for money relative to price paid"},
+    {"name": "after sales parts availability", "description": "Ease of getting spare parts and accessories"}
+  ]
+}

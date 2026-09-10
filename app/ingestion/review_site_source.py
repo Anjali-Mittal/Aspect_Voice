@@ -18,12 +18,29 @@ needs a jsonld source instead, or is left out.
 """
 import time
 import json
+import re
 from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
 from app.config import get_config
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+
+
+def _parse_date(date_str: str | None) -> datetime:
+    """Parse timestamps across ISO, MM/DD/YYYY, DD/MM/YYYY, etc. fallback to utcnow."""
+    if not date_str:
+        return datetime.utcnow()
+    try:
+        return datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+    except ValueError:
+        pass
+    for fmt in ("%m/%d/%Y %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%m/%d/%Y", "%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(date_str.strip(), fmt)
+        except ValueError:
+            pass
+    return datetime.utcnow()
 
 
 def _fetch(url: str) -> BeautifulSoup | None:
@@ -51,40 +68,75 @@ def _find_reviews_in_jsonld(node) -> list[dict]:
     return found
 
 
+def _find_reviews_in_initial_state(soup: BeautifulSoup) -> list[dict]:
+    """Extract reviews from embedded state like window.__INITIAL_STATE__ (e.g. BikeWale / CarWale)."""
+    found = []
+    for script in soup.find_all("script"):
+        if not script.string or "window.__INITIAL_STATE__" not in script.string:
+            continue
+        m = re.search(r"window\.__INITIAL_STATE__\s*=\s*({.*?});", script.string, re.DOTALL)
+        if m:
+            try:
+                data = json.loads(m.group(1))
+                user_review = data.get("userReviewListingPage", {}).get("userReview", {})
+                all_raw_reviews = user_review.get("reviews", []) + user_review.get("reviewsWithImages", [])
+                for r in all_raw_reviews:
+                    desc = r.get("description") or ""
+                    if desc.strip():
+                        found.append({
+                            "@type": "Review",
+                            "author": {"name": r.get("userName")},
+                            "reviewBody": desc,
+                            "name": r.get("title"),
+                            "datePublished": r.get("entryDate"),
+                            "reviewRating": {"ratingValue": r.get("userRating")},
+                        })
+            except (json.JSONDecodeError, TypeError):
+                pass
+    return found
+
+
 def _scrape_jsonld(site_cfg: dict, product_name: str) -> list[dict]:
     soup = _fetch(site_cfg["url"])
     if soup is None:
         return []
 
-    items = []
+    raw_reviews = []
+    # 1. Standard application/ld+json blocks
     for script in soup.find_all("script", type="application/ld+json"):
         try:
             data = json.loads(script.string)
+            raw_reviews.extend(_find_reviews_in_jsonld(data))
         except (json.JSONDecodeError, TypeError):
             continue
-        for review in _find_reviews_in_jsonld(data):
-            text = review.get("reviewBody") or review.get("description") or ""
-            if not text.strip():
-                continue
-            author_field = review.get("author")
-            author = author_field.get("name") if isinstance(author_field, dict) else author_field
-            date_str = review.get("datePublished")
-            try:
-                created = datetime.fromisoformat(date_str.replace("Z", "+00:00")) if date_str else datetime.utcnow()
-            except ValueError:
-                created = datetime.utcnow()
 
-            source_id = f"{site_cfg['name']}_{hash(text) & 0xffffffff}"
-            items.append({
-                "source": f"review_site_{site_cfg['name']}",
-                "source_id": source_id,
-                "product_name": product_name,
-                "text": text,
-                "author": author,
-                "url": site_cfg["url"],
-                "created_at": created,
-                "meta": {"site": site_cfg["name"], "rating": (review.get("reviewRating") or {}).get("ratingValue")},
-            })
+    # 2. Embedded state hydration blocks (e.g. BikeWale)
+    raw_reviews.extend(_find_reviews_in_initial_state(soup))
+
+    items = []
+    seen_texts = set()
+    for review in raw_reviews:
+        text = review.get("reviewBody") or review.get("description") or ""
+        text = text.strip()
+        if not text or text in seen_texts:
+            continue
+        seen_texts.add(text)
+
+        author_field = review.get("author")
+        author = author_field.get("name") if isinstance(author_field, dict) else author_field
+        created = _parse_date(review.get("datePublished"))
+
+        source_id = f"{site_cfg['name']}_{hash(text) & 0xffffffff}"
+        items.append({
+            "source": f"review_site_{site_cfg['name']}",
+            "source_id": source_id,
+            "product_name": product_name,
+            "text": text,
+            "author": author,
+            "url": site_cfg["url"],
+            "created_at": created,
+            "meta": {"site": site_cfg["name"], "rating": (review.get("reviewRating") or {}).get("ratingValue")},
+        })
     return items
 
 

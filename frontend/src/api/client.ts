@@ -78,6 +78,7 @@ export interface IssueSummary {
   priority_score: number;
   trend: string;
   confidence: number;
+  confidence_basis: string; // "evidence_volume" — not a statistical measure
   examples: string[];
 }
 
@@ -91,6 +92,7 @@ export interface IssueDetail {
   priority_score: number;
   trend: string;
   confidence: number;
+  confidence_basis: string; // "evidence_volume" — not a statistical measure
   primary_context: string | null;
   recommended_investigation: string | null;
   source_group_count: number;

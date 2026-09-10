@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { fetchOverview } from "../api/client";
 import type { OverviewResponse } from "../api/client";
 import { KpiCard } from "../components/KpiCard";
@@ -69,14 +69,21 @@ export function OverviewPage({ vehicle }: Props) {
             ) : (
               <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <ResponsiveContainer width="100%" height={260}>
-                  <LineChart data={sentiment_trend}>
+                  <LineChart data={sentiment_trend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                     <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} />
                     <YAxis stroke="#94a3b8" fontSize={12} allowDecimals={false} />
                     <Tooltip />
-                    <Line type="monotone" dataKey="positive" stroke="#10b981" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="neutral" stroke="#94a3b8" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="negative" stroke="#ef4444" strokeWidth={2} dot={false} />
+                    <Legend
+                      verticalAlign="top"
+                      align="right"
+                      iconType="circle"
+                      iconSize={8}
+                      wrapperStyle={{ paddingBottom: "12px", fontSize: "12px", fontWeight: 500 }}
+                    />
+                    <Line type="monotone" dataKey="positive" name="Positive" stroke="#10b981" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="neutral" name="Neutral" stroke="#94a3b8" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="negative" name="Negative" stroke="#ef4444" strokeWidth={2} dot={false} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>

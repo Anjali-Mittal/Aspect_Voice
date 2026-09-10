@@ -1,0 +1,37 @@
+id,text,expected_feature,expected_sentiment,expected_severity_band
+1,"Front brake bites way too hard, almost threw me over the handlebars twice in city traffic.",braking,negative,high
+2,"Braking feels progressive and confident even in the rain, no complaints.",braking,positive,none
+3,"Rear brake makes a faint squeak sometimes but still stops fine.",braking,negative,low
+4,"Getting around 52 kmpl in mixed city and highway riding, better than my last bike.",mileage,positive,none
+5,"Mileage dropped to 38 kmpl after the first service, not sure what changed.",mileage,negative,medium
+6,"Fuel efficiency is honestly nothing special, about what I expected for this segment.",mileage,neutral,none
+7,"Seat is rock hard, my back starts hurting after 40 minutes on the highway.",seat comfort,negative,high
+8,"Seat cushioning is decent for short city commutes.",seat comfort,positive,none
+9,"Indicator switch feels loose and rattles a bit, cheap plastic feel.",switch quality,negative,medium
+10,"Kill switch and horn placement are intuitive, easy to reach without looking down.",switch quality,positive,none
+11,"Headlight is genuinely weak, barely lights up unlit stretches on the highway at night.",headlight throw,negative,high
+12,"Headlight throw is average, fine for city roads with streetlights.",headlight throw,neutral,none
+13,"Service center kept my bike for 5 days for a basic first service, no updates unless I called them.",service experience,negative,high
+14,"Service advisor was polite and explained every charge on the bill clearly.",service experience,positive,none
+15,"Had to go back twice because they didn't fix the clutch noise the first time.",service experience,negative,medium
+16,"Engine pulls strong in first three gears, feels peppy for a 125.",engine performance,positive,none
+17,"Engine feels flat above 70 kmph, doesn't have much left after that.",engine performance,negative,medium
+18,"Power delivery is smooth, no jerks even at low RPM in traffic.",engine performance,positive,none
+19,"Paint on the fuel tank started chipping within two months of normal use.",build quality,negative,medium
+20,"Panel gaps and fit finish are solid, doesn't feel cheap anywhere.",build quality,positive,none
+21,"Footpegs buzz badly once you cross 80 kmph, my feet go numb on long rides.",vibration,negative,high
+22,"Some vibration on the mirrors at idle but nothing major once moving.",vibration,negative,low
+23,"Pillion seat is too narrow, my wife complains on anything longer than 20 minutes.",pillion comfort,negative,medium
+24,"Pillion grab rail and footpeg position are comfortable for my father to ride behind me.",pillion comfort,positive,none
+25,"For the price, you're not getting anything a competitor doesn't already offer for less.",price value,negative,medium
+26,"Genuinely feels like good value for money compared to what else is available in this price range.",price value,positive,none
+27,"Spare parts for this model are hard to find outside the city, had to wait a week for a switch part.",after sales parts availability,negative,medium
+28,"Local dealer had the part in stock same day, no issues getting accessories.",after sales parts availability,positive,none
+29,"Bought it two weeks ago, still getting used to the riding position overall.",,neutral,none
+30,"Overall happy with the purchase so far, would recommend to a friend.",,positive,none
+31,"Brakes are excellent but the seat is honestly unbearable on anything past an hour.",braking,positive,none
+32,"Brakes are excellent but the seat is honestly unbearable on anything past an hour.",seat comfort,negative,high
+33,"Mileage is great and headlight is bright enough, no complaints on either front.",mileage,positive,none
+34,"Mileage is great and headlight is bright enough, no complaints on either front.",headlight throw,positive,none
+35,"Clutch feels heavy after a long ride in traffic, wrist starts aching.",,negative,medium
+36,"Test ride was smooth, sales staff didn't pressure me into add-ons.",service experience,positive,none
