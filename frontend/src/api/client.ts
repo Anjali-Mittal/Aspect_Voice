@@ -52,20 +52,27 @@ export interface PainPoint {
   trend: string;
 }
 
-export interface EmergingIssue {
-  id: number;
-  feature: string;
-  issue: string;
-  trend: string;
-}
-
 export interface OverviewResponse {
   vehicle: string;
   kpis: OverviewKPIs;
   sentiment_trend: SentimentTrendPoint[];
   top_strengths: TopStrength[];
   top_pain_points: PainPoint[];
-  emerging_issues: EmergingIssue[];
+}
+
+export interface MonthFeedbackTag {
+  feature: string;
+  sentiment: string | null;
+  snippet: string | null;
+}
+
+export interface MonthFeedbackItem {
+  full_text: string | null;
+  author: string | null;
+  source: string | null;
+  url: string | null;
+  published: string | null;
+  tags: MonthFeedbackTag[];
 }
 
 export interface IssueSummary {
@@ -129,6 +136,11 @@ export async function fetchVehicles(): Promise<string[]> {
 
 export async function fetchOverview(vehicle: string): Promise<OverviewResponse> {
   const { data } = await api.get<OverviewResponse>("/overview", { params: { vehicle } });
+  return data;
+}
+
+export async function fetchFeedbackByMonth(vehicle: string, month: string): Promise<MonthFeedbackItem[]> {
+  const { data } = await api.get<MonthFeedbackItem[]>("/feedback-by-month", { params: { vehicle, month } });
   return data;
 }
 

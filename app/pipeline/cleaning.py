@@ -25,6 +25,14 @@ def _normalize(text: str) -> str:
     return text.strip()
 
 
+def _dedup_key(text: str) -> str:
+    """Case/punctuation-insensitive form used only for the fuzzy-match
+    comparison, so the same comment re-cased or re-punctuated across
+    sources still matches (e.g. a cross-post with a trailing '.' added,
+    or a source that lowercases everything)."""
+    return re.sub(r"[^\w\s]", "", text.lower())
+
+
 def run_cleaning():
     cfg = get_config()
     Session = get_session_factory(cfg["storage"]["db_url"])
@@ -50,8 +58,9 @@ def run_cleaning():
 
         product_pool = existing_by_product.setdefault(raw.product_name, [])
         dup_of = None
+        key = _dedup_key(clean_text)
         for existing in product_pool:
-            if fuzz.ratio(clean_text, existing.clean_text) >= FUZZY_DUPLICATE_THRESHOLD:
+            if fuzz.ratio(key, _dedup_key(existing.clean_text)) >= FUZZY_DUPLICATE_THRESHOLD:
                 dup_of = existing
                 break
 

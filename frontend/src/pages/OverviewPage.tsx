@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { fetchOverview } from "../api/client";
 import type { OverviewResponse } from "../api/client";
+import { MethodologyTooltip } from "../components/MethodologyTooltip";
 import { KpiCard } from "../components/KpiCard";
 import { EmptyState } from "../components/EmptyState";
 import { TrendBadge } from "../components/TrendBadge";
+import { MonthReviewsDrawer } from "../components/MonthReviewsDrawer";
 
 interface Props {
   vehicle: string;
@@ -14,6 +16,7 @@ export function OverviewPage({ vehicle }: Props) {
   const [data, setData] = useState<OverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
 
   useEffect(() => {
     if (!vehicle) return;
@@ -35,7 +38,7 @@ export function OverviewPage({ vehicle }: Props) {
     return <EmptyState message="No data yet." />;
   }
 
-  const { kpis, sentiment_trend, top_strengths, top_pain_points, emerging_issues } = data;
+  const { kpis, sentiment_trend, top_strengths, top_pain_points } = data;
   const hasFeedback = kpis.feedback_analyzed > 0;
 
   return (
@@ -68,8 +71,16 @@ export function OverviewPage({ vehicle }: Props) {
               <EmptyState message="Not enough dated feedback to show a trend yet." />
             ) : (
               <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <p className="mb-1 text-xs text-slate-400">Click a point on the chart to see that month's reviews.</p>
                 <ResponsiveContainer width="100%" height={260}>
-                  <LineChart data={sentiment_trend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <LineChart
+                    data={sentiment_trend}
+                    margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                    onClick={(e) => {
+                      if (e && typeof e.activeLabel === "string") setSelectedMonth(e.activeLabel);
+                    }}
+                    style={{ cursor: "pointer" }}
+                  >
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                     <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} />
                     <YAxis stroke="#94a3b8" fontSize={12} allowDecimals={false} />
@@ -81,9 +92,33 @@ export function OverviewPage({ vehicle }: Props) {
                       iconSize={8}
                       wrapperStyle={{ paddingBottom: "12px", fontSize: "12px", fontWeight: 500 }}
                     />
-                    <Line type="monotone" dataKey="positive" name="Positive" stroke="#10b981" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="neutral" name="Neutral" stroke="#94a3b8" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="negative" name="Negative" stroke="#ef4444" strokeWidth={2} dot={false} />
+                    <Line
+                      type="monotone"
+                      dataKey="positive"
+                      name="Positive"
+                      stroke="#10b981"
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 5, style: { cursor: "pointer" } }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="neutral"
+                      name="Neutral"
+                      stroke="#94a3b8"
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 5, style: { cursor: "pointer" } }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="negative"
+                      name="Negative"
+                      stroke="#ef4444"
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 5, style: { cursor: "pointer" } }}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -92,7 +127,10 @@ export function OverviewPage({ vehicle }: Props) {
 
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <section>
-              <h2 className="mb-3 text-sm font-semibold text-slate-700">Top Customer Strengths</h2>
+              <h2 className="mb-3 flex items-center text-sm font-semibold text-slate-700">
+                Top Customer Strengths
+                <MethodologyTooltip text="Per feature, the % of mentions that were positive (features with under 3 total mentions are excluded as too thin to judge)." />
+              </h2>
               {top_strengths.length === 0 ? (
                 <EmptyState message="Not enough positively-discussed features yet." />
               ) : (
@@ -113,7 +151,10 @@ export function OverviewPage({ vehicle }: Props) {
             </section>
 
             <section>
-              <h2 className="mb-3 text-sm font-semibold text-slate-700">Top Customer Pain Points</h2>
+              <h2 className="mb-3 flex items-center text-sm font-semibold text-slate-700">
+                Top Customer Pain Points
+                <MethodologyTooltip text="Negative feedback is grouped into distinct issues per feature (min. 3 mentions). Ranked by a score combining mention volume, average severity, and how recent the mentions are." />
+              </h2>
               {top_pain_points.length === 0 ? (
                 <EmptyState message="No recurring issues identified yet." />
               ) : (
@@ -137,29 +178,11 @@ export function OverviewPage({ vehicle }: Props) {
               )}
             </section>
           </div>
-
-          <section>
-            <h2 className="mb-3 text-sm font-semibold text-slate-700">Emerging Issues</h2>
-            {emerging_issues.length === 0 ? (
-              <EmptyState message="No emerging issues detected — nothing trending upward right now." />
-            ) : (
-              <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-                {emerging_issues.map((e, i) => (
-                  <div
-                    key={e.id}
-                    className={`flex items-center justify-between px-4 py-3 text-sm ${i > 0 ? "border-t border-slate-100" : ""}`}
-                  >
-                    <div>
-                      <div className="font-medium text-slate-800">{e.feature}</div>
-                      <div className="text-xs text-slate-500">{e.issue}</div>
-                    </div>
-                    <TrendBadge trend={e.trend} />
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
         </>
+      )}
+
+      {selectedMonth && (
+        <MonthReviewsDrawer vehicle={vehicle} month={selectedMonth} onClose={() => setSelectedMonth(null)} />
       )}
     </div>
   );

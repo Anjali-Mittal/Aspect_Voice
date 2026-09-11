@@ -5,6 +5,7 @@ path back to real rows).
 """
 from collections import defaultdict
 from fastapi import APIRouter, Query
+from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 from app.config import get_config
 from app.models.db import (
@@ -35,9 +36,30 @@ def list_vehicles():
 
 @router.get("/features")
 def list_features(vehicle: str = Query(...)):
-    session, _ = _session()
+    """Discovered features for the sidebar. Features with too few mentions
+    to say anything meaningful are left out — same noise floor
+    (min_cluster_size) used for Top Strengths, so a feature doesn't show up
+    with an empty/one-sided summary a click later."""
+    session, cfg = _session()
+    min_cluster_size = cfg["pipeline"]["min_cluster_size"]
+
     rows = session.query(FeatureOntology).filter_by(product_name=vehicle).all()
-    out = [{"feature": r.feature_name, "description": r.description} for r in rows]
+
+    mention_counts = defaultdict(int)
+    for feature_name, count in (
+        session.query(AspectMention.feature_name, func.count(AspectMention.id))
+        .join(CleanFeedback, AspectMention.clean_feedback_id == CleanFeedback.id)
+        .filter(CleanFeedback.product_name == vehicle)
+        .group_by(AspectMention.feature_name)
+        .all()
+    ):
+        mention_counts[feature_name] = count
+
+    out = [
+        {"feature": r.feature_name, "description": r.description}
+        for r in rows
+        if mention_counts[r.feature_name] >= min_cluster_size
+    ]
     session.close()
     return out
 
@@ -214,6 +236,47 @@ def issue_evidence(issue_id: int):
     return out
 
 
+@router.get("/feedback-by-month")
+def feedback_by_month(vehicle: str = Query(...), month: str = Query(..., description="YYYY-MM"), sentiment: str | None = Query(None)):
+    """Reviews behind one point on the Overview sentiment-trend chart —
+    clicking a month drills into the actual feedback rows for it.
+    One review can mention several features (range, charging, price all
+    in one sentence) and gets one AspectMention row per feature — grouped
+    here by review so it shows up once, with all its feature/sentiment
+    tags attached, instead of once per mention."""
+    session, _ = _session()
+    q = (
+        session.query(AspectMention)
+        .join(CleanFeedback, AspectMention.clean_feedback_id == CleanFeedback.id)
+        .filter(CleanFeedback.product_name == vehicle, CleanFeedback.is_duplicate_of.is_(None))
+        .options(joinedload(AspectMention.clean_feedback).joinedload(CleanFeedback.raw_feedback))
+    )
+    if sentiment:
+        q = q.filter(AspectMention.sentiment == sentiment)
+    mentions = [m for m in q.all() if m.clean_feedback and m.clean_feedback.created_at and m.clean_feedback.created_at.strftime("%Y-%m") == month]
+
+    reviews: dict[int, dict] = {}
+    for m in mentions:
+        clean = m.clean_feedback
+        raw = clean.raw_feedback if clean else None
+        key = clean.id
+        if key not in reviews:
+            reviews[key] = {
+                "full_text": clean.clean_text if clean else None,
+                "author": raw.author if raw else None,
+                "source": raw.source if raw else None,
+                "url": raw.url if raw else None,
+                "published": raw.created_at.isoformat() if raw and raw.created_at else None,
+                "tags": [],
+            }
+        reviews[key]["tags"].append({"feature": m.feature_name, "sentiment": m.sentiment, "snippet": m.snippet})
+
+    out = list(reviews.values())
+    session.close()
+    out.sort(key=lambda r: r["published"] or "", reverse=True)
+    return out
+
+
 @router.get("/overview")
 def overview(vehicle: str = Query(...)):
     """Everything the Product Overview page needs in one call — KPIs,
@@ -234,7 +297,7 @@ def overview(vehicle: str = Query(...)):
     mentions = (
         session.query(AspectMention)
         .join(CleanFeedback, AspectMention.clean_feedback_id == CleanFeedback.id)
-        .filter(CleanFeedback.product_name == vehicle)
+        .filter(CleanFeedback.product_name == vehicle, CleanFeedback.is_duplicate_of.is_(None))
         .options(joinedload(AspectMention.clean_feedback))
         .all()
     )
@@ -327,7 +390,7 @@ def stats(vehicle: str = Query(...)):
     mentions = (
         session.query(AspectMention)
         .join(CleanFeedback, AspectMention.clean_feedback_id == CleanFeedback.id)
-        .filter(CleanFeedback.product_name == vehicle)
+        .filter(CleanFeedback.product_name == vehicle, CleanFeedback.is_duplicate_of.is_(None))
         .count()
     )
     clusters = session.query(IssueCluster).filter_by(product_name=vehicle).count()

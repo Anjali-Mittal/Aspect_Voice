@@ -99,29 +99,46 @@ def run_clustering_and_scoring():
             continue
         by_product_feature[m.clean_feedback.product_name][m.feature_name].append(m)
 
+    # mentions already covered by an existing cluster — a feature with no
+    # mention outside this set has nothing new since it was last clustered,
+    # so its existing clusters stay untouched instead of being rebuilt.
+    already_clustered_ids = {
+        row[0] for row in session.query(IssueClusterMember.aspect_mention_id).all()
+    }
+
     total_clusters = 0
     skipped_features = {}  # "product | feature" -> reason, surfaced in the return value
+    unchanged_features = []  # features with no new mentions — persisted as-is
     now = datetime.utcnow()
 
     for product_name, by_feature in by_product_feature.items():
-        # dropping+rebuilding clusters also orphans old membership rows for this product;
-        # delete members of the clusters we're about to delete, then the clusters themselves
-        old_cluster_ids = [
-            c.id for c in session.query(IssueCluster.id).filter_by(product_name=product_name)
-        ]
-        if old_cluster_ids:
-            session.query(IssueClusterMember).filter(
-                IssueClusterMember.issue_cluster_id.in_(old_cluster_ids)
-            ).delete(synchronize_session=False)
-        session.query(IssueCluster).filter_by(product_name=product_name).delete()
-
         for feature_name, mentions in by_feature.items():
             skip_key = f"{product_name} | {feature_name}"
+
+            has_new_mentions = any(m.id not in already_clustered_ids for m in mentions)
+            if not has_new_mentions:
+                unchanged_features.append(skip_key)
+                continue
+
             if len(mentions) < min_cluster_size:
                 skipped_features[skip_key] = (
                     f"only {len(mentions)} negative mentions, need {min_cluster_size}"
                 )
                 continue
+
+            # only rebuild THIS feature's own clusters — every other feature
+            # (including ones with no new data) is left fully persistent
+            old_cluster_ids = [
+                c.id for c in session.query(IssueCluster.id)
+                .filter_by(product_name=product_name, feature_name=feature_name)
+            ]
+            if old_cluster_ids:
+                session.query(IssueClusterMember).filter(
+                    IssueClusterMember.issue_cluster_id.in_(old_cluster_ids)
+                ).delete(synchronize_session=False)
+                session.query(IssueCluster).filter_by(
+                    product_name=product_name, feature_name=feature_name
+                ).delete()
 
             snippets = "\n".join(
                 f"{j}. {m.snippet or m.clean_feedback.clean_text[:200]}" for j, m in enumerate(mentions)
@@ -188,4 +205,8 @@ def run_clustering_and_scoring():
 
     session.commit()
     session.close()
-    return {"clusters": total_clusters, "skipped_features": skipped_features}
+    return {
+        "clusters": total_clusters,
+        "skipped_features": skipped_features,
+        "unchanged_features": unchanged_features,
+    }

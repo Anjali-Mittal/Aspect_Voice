@@ -9,10 +9,10 @@ const LABELS: Record<string, string> = {
   increasing: "Increasing",
   decreasing: "Decreasing",
   stable: "Stable",
-  insufficient_data: "Not enough data",
 };
 
 export function TrendBadge({ trend }: { trend: string }) {
+  if (trend === "insufficient_data") return null;
   const style = STYLES[trend] ?? STYLES.stable;
   const label = LABELS[trend] ?? trend;
   return (
