@@ -94,4 +94,5 @@ export function MonthReviewsDrawer({ vehicle, month, onClose }: Props) {
             </div>
         </div>
     );
+
 }
