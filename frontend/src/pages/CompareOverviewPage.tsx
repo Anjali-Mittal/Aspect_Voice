@@ -69,6 +69,73 @@ function ChartLegend({ vehicleA, vehicleB }: { vehicleA: string; vehicleB: strin
     );
 }
 
+function CompareChartTooltip({ active, payload, label, vehicleA, vehicleB }: any) {
+    if (!active || !payload || !payload.length) return null;
+    const row = payload[0]?.payload;
+    if (!row) return null;
+
+    return (
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-lg text-xs min-w-[210px]">
+            <p className="font-semibold text-slate-800 mb-2 border-b border-slate-100 pb-1.5">{label}</p>
+            <div className="space-y-2.5">
+                <div>
+                    <div className="flex items-center gap-1.5 font-semibold text-slate-800 mb-1">
+                        <svg width="20" height="6" className="shrink-0">
+                            <line x1="0" y1="3" x2="20" y2="3" stroke="#64748b" strokeWidth="2" />
+                        </svg>
+                        <span className="truncate">{vehicleA}</span>
+                    </div>
+                    <div className="flex items-center justify-between pl-6 text-slate-600">
+                        <span className="flex items-center gap-1.5">
+                            <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: POSITIVE_COLOR }} />
+                            Positive
+                        </span>
+                        <span className="font-semibold text-slate-800">
+                            {row.a_positive !== null && row.a_positive !== undefined ? `${row.a_positive}%` : "—"}
+                        </span>
+                    </div>
+                    <div className="flex items-center justify-between pl-6 text-slate-600 mt-0.5">
+                        <span className="flex items-center gap-1.5">
+                            <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: NEGATIVE_COLOR }} />
+                            Negative
+                        </span>
+                        <span className="font-semibold text-slate-800">
+                            {row.a_negative !== null && row.a_negative !== undefined ? `${row.a_negative}%` : "—"}
+                        </span>
+                    </div>
+                </div>
+
+                <div className="border-t border-slate-100 pt-2">
+                    <div className="flex items-center gap-1.5 font-semibold text-slate-800 mb-1">
+                        <svg width="20" height="6" className="shrink-0">
+                            <line x1="0" y1="3" x2="20" y2="3" stroke="#64748b" strokeWidth="2" strokeDasharray="5 3" />
+                        </svg>
+                        <span className="truncate">{vehicleB}</span>
+                    </div>
+                    <div className="flex items-center justify-between pl-6 text-slate-600">
+                        <span className="flex items-center gap-1.5">
+                            <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: POSITIVE_COLOR }} />
+                            Positive
+                        </span>
+                        <span className="font-semibold text-slate-800">
+                            {row.b_positive !== null && row.b_positive !== undefined ? `${row.b_positive}%` : "—"}
+                        </span>
+                    </div>
+                    <div className="flex items-center justify-between pl-6 text-slate-600 mt-0.5">
+                        <span className="flex items-center gap-1.5">
+                            <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: NEGATIVE_COLOR }} />
+                            Negative
+                        </span>
+                        <span className="font-semibold text-slate-800">
+                            {row.b_negative !== null && row.b_negative !== undefined ? `${row.b_negative}%` : "—"}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export function CompareOverviewPage({ vehicleA, vehicleB }: Props) {
     const [dataA, setDataA] = useState<OverviewResponse | null>(null);
     const [dataB, setDataB] = useState<OverviewResponse | null>(null);
@@ -182,7 +249,7 @@ export function CompareOverviewPage({ vehicleA, vehicleB }: Props) {
                                         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                                         <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} />
                                         <YAxis stroke="#94a3b8" fontSize={12} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
-                                        <Tooltip formatter={(value: any) => [`${value}%`]} />
+                                        <Tooltip content={<CompareChartTooltip vehicleA={vehicleA} vehicleB={vehicleB} />} />
                                         <Line type="monotone" dataKey="a_positive" name={`${vehicleA} · Positive`} stroke={POSITIVE_COLOR} strokeWidth={2} dot={false} connectNulls />
                                         <Line type="monotone" dataKey="a_negative" name={`${vehicleA} · Negative`} stroke={NEGATIVE_COLOR} strokeWidth={2} dot={false} connectNulls />
                                         <Line type="monotone" dataKey="b_positive" name={`${vehicleB} · Positive`} stroke={POSITIVE_COLOR} strokeWidth={2} strokeDasharray="5 3" dot={false} connectNulls />
