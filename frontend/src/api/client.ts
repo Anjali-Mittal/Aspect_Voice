@@ -168,8 +168,14 @@ export async function fetchEvidence(issueId: number): Promise<EvidenceItem[]> {
   return data;
 }
 
-export async function fetchFeatures(vehicle: string): Promise<{ feature: string; description: string }[]> {
-  const { data } = await api.get(`/features`, { params: { vehicle } });
+export interface Feature {
+  feature: string;
+  description: string;
+  category: string | null;
+}
+
+export async function fetchFeatures(vehicle: string): Promise<Feature[]> {
+  const { data } = await api.get<Feature[]>(`/features`, { params: { vehicle } });
   return data;
 }
 

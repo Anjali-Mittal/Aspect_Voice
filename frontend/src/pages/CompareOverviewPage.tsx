@@ -182,7 +182,7 @@ export function CompareOverviewPage({ vehicleA, vehicleB }: Props) {
                                         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                                         <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} />
                                         <YAxis stroke="#94a3b8" fontSize={12} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
-                                        <Tooltip formatter={(value: number) => [`${value}%`, undefined]} />
+                                        <Tooltip formatter={(value: any) => [`${value}%`]} />
                                         <Line type="monotone" dataKey="a_positive" name={`${vehicleA} · Positive`} stroke={POSITIVE_COLOR} strokeWidth={2} dot={false} connectNulls />
                                         <Line type="monotone" dataKey="a_negative" name={`${vehicleA} · Negative`} stroke={NEGATIVE_COLOR} strokeWidth={2} dot={false} connectNulls />
                                         <Line type="monotone" dataKey="b_positive" name={`${vehicleB} · Positive`} stroke={POSITIVE_COLOR} strokeWidth={2} strokeDasharray="5 3" dot={false} connectNulls />
