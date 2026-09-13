@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { checkHealth, fetchVehicles } from "./api/client";
 import { AppShell } from "./components/AppShell";
 import { EmptyState } from "./components/EmptyState";
+import { CompareOverviewPage } from "./pages/CompareOverviewPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { ProductInsightsPage } from "./pages/ProductInsightsPage";
 import { EvidenceExplorerPage } from "./pages/EvidenceExplorerPage";
@@ -11,6 +12,8 @@ function App() {
   const [selectedVehicle, setSelectedVehicle] = useState("");
   const [activePage, setActivePage] = useState<"overview" | "insights">("overview");
   const [openIssueId, setOpenIssueId] = useState<number | null>(null);
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareVehicle, setCompareVehicle] = useState("");
   const [loading, setLoading] = useState(true);
   const [isWaking, setIsWaking] = useState(false);
   const [wakeElapsed, setWakeElapsed] = useState(0);
@@ -43,6 +46,7 @@ function App() {
         const vs = await fetchVehicles();
         setVehicles(vs);
         if (vs.length > 0) setSelectedVehicle(vs[0]);
+        if (vs.length > 1) setCompareVehicle(vs[1]);
         success = true;
         break;
       } catch {
@@ -144,9 +148,17 @@ function App() {
       onSelectVehicle={setSelectedVehicle}
       activePage={activePage}
       onNavigate={setActivePage}
+      compareMode={compareMode}
+      onToggleCompare={() => setCompareMode((v) => !v)}
+      compareVehicle={compareVehicle}
+      onSelectCompareVehicle={setCompareVehicle}
     >
       {activePage === "overview" ? (
-        <OverviewPage vehicle={selectedVehicle} />
+        compareMode ? (
+          <CompareOverviewPage vehicleA={selectedVehicle} vehicleB={compareVehicle} />
+        ) : (
+          <OverviewPage vehicle={selectedVehicle} />
+        )
       ) : (
         <ProductInsightsPage vehicle={selectedVehicle} onOpenEvidence={setOpenIssueId} />
       )}

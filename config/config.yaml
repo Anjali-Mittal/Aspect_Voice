@@ -101,8 +101,8 @@ sources:
     enabled: true    # per-target site lists live under targets[].review_sites above
 
 llm:
-  provider_priority: ["groq", "gemini"]   # groq exhausted (rate limit/error) -> falls to gemini, and vice versa
-  groq:
+  provider_priority: ["gemini"]   # groq exhausted (rate limit/error) -> falls to gemini, and vice versa
+  #groq:
     # llama-3.3-70b-versatile and llama-3.1-8b-instant were deprecated by
     # Groq (announced Jun 17 2026, shut down Aug 16 2026). Migrated to their
     # official replacements per https://console.groq.com/docs/deprecations.
@@ -110,7 +110,7 @@ llm:
     # app/llm/client.py, which is what actually suppresses the <think>
     # blocks these models emit by default; don't rely on model_priority
     # alone to fix that if you change this list.
-    model_priority: ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]
+    #model_priority: ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]
   gemini:
     # Google AI Studio free tier — no card, no expiry (only linking Cloud
     # billing would ever ask for a card, which this project never does).

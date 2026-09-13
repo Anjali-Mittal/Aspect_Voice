@@ -1,7 +1,7 @@
 from datetime import datetime
 from functools import lru_cache
 from sqlalchemy import (
-    create_engine, Column, Integer, String, Text, DateTime, Float, ForeignKey, JSON
+    create_engine, Column, Integer, String, Text, DateTime, Float, ForeignKey, JSON, Boolean
 )
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
@@ -37,6 +37,7 @@ class CleanFeedback(Base):
     created_at = Column(DateTime)              # carried over from raw_feedback.created_at
     is_duplicate_of = Column(Integer, ForeignKey("clean_feedback.id"), nullable=True)
     processed_at = Column(DateTime, default=datetime.utcnow)
+    aspect_extraction_done = Column(Boolean, default=False)  # set True once aspect_extraction has run on this row, even if it produced zero mentions — a review with no extractable feature must not look identical to one never attempted, or it gets re-sent to the LLM forever
 
     raw_feedback = relationship("RawFeedback")
 
@@ -48,6 +49,7 @@ class FeatureOntology(Base):
     product_name = Column(String, nullable=False)
     feature_name = Column(String, nullable=False)
     description = Column(Text)
+    category = Column(String, nullable=True)  # e.g. "Engine & Powertrain" — assigned by a one-off categorize_features pass, not ontology discovery itself, so re-running discovery doesn't require re-categorizing
     discovered_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -58,7 +60,8 @@ class AspectMention(Base):
     clean_feedback_id = Column(Integer, ForeignKey("clean_feedback.id"))
     feature_name = Column(String, nullable=False)
     sentiment = Column(String)         # "positive" | "negative" | "neutral"
-    severity = Column(Float)           # 0-1, LLM-estimated
+    severity = Column(Float)           # 0-1, LLM-estimated functional/business impact — NOT emotional tone
+    safety_related = Column(Boolean, default=False)  # rider/physical safety risk — separate axis from severity, see aspect_extraction.py
     snippet = Column(Text)
     extracted_at = Column(DateTime, default=datetime.utcnow)
 
@@ -74,6 +77,7 @@ class IssueCluster(Base):
     issue_summary = Column(Text)
     mention_count = Column(Integer)
     avg_severity = Column(Float)
+    safety_related = Column(Boolean, default=False)  # true if any member mention was safety-related
     priority_score = Column(Float)
     trend = Column(String)             # "increasing" | "stable" | "decreasing" | "insufficient_data"
     confidence = Column(Float)         # 0-1, derived from evidence volume — not a statistical CI, see clustering_scoring.py

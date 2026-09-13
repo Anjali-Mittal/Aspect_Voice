@@ -81,6 +81,7 @@ export interface IssueSummary {
   issue: string;
   mentions: number;
   avg_severity: number;
+  safety_related: boolean;
   severity_bucket: "high" | "medium" | "low";
   priority_score: number;
   trend: string;
@@ -95,6 +96,7 @@ export interface IssueDetail {
   issue: string;
   mentions: number;
   avg_severity: number;
+  safety_related: boolean;
   severity_bucket: "high" | "medium" | "low";
   priority_score: number;
   trend: string;

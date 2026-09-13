@@ -48,6 +48,7 @@ Run it:
 
 ```bash
 python run.py
+uvicorn app.main:app --reload
 ```
 
 Server starts at `http://localhost:8000` (or whatever `PORT` you set).

@@ -56,7 +56,7 @@ def list_features(vehicle: str = Query(...)):
         mention_counts[feature_name] = count
 
     out = [
-        {"feature": r.feature_name, "description": r.description}
+        {"feature": r.feature_name, "description": r.description, "category": r.category}
         for r in rows
         if mention_counts[r.feature_name] >= min_cluster_size
     ]
@@ -86,13 +86,8 @@ def feature_summary(feature_name: str, vehicle: str = Query(...)):
     severity_buckets = {"high": 0, "medium": 0, "low": 0}
     for m in mentions:
         sentiment_counts[m.sentiment or "neutral"] += 1
-        sev = m.severity or 0
-        if sev >= 0.66:
-            severity_buckets["high"] += 1
-        elif sev >= 0.33:
-            severity_buckets["medium"] += 1
-        else:
-            severity_buckets["low"] += 1
+        bucket = _severity_bucket(m.severity, m.safety_related)
+        severity_buckets[bucket] += 1
 
     return {
         "feature": feature_name,
@@ -108,7 +103,9 @@ def feature_summary(feature_name: str, vehicle: str = Query(...)):
     }
 
 
-def _severity_bucket(sev: float | None) -> str:
+def _severity_bucket(sev: float | None, safety_related: bool = False) -> str:
+    if safety_related:
+        return "high"  # safety risk always surfaces as high, regardless of the numeric score
     sev = sev or 0
     if sev >= 0.66:
         return "high"
@@ -144,7 +141,8 @@ def list_issues(
         "issue": r.issue_summary,
         "mentions": r.mention_count,
         "avg_severity": r.avg_severity,
-        "severity_bucket": _severity_bucket(r.avg_severity),
+        "safety_related": r.safety_related,
+        "severity_bucket": _severity_bucket(r.avg_severity, r.safety_related),
         "priority_score": r.priority_score,
         "trend": r.trend,
         "confidence": r.confidence,
@@ -189,7 +187,8 @@ def issue_detail(issue_id: int):
         "issue": cluster.issue_summary,
         "mentions": cluster.mention_count,
         "avg_severity": cluster.avg_severity,
-        "severity_bucket": _severity_bucket(cluster.avg_severity),
+        "safety_related": cluster.safety_related,
+        "severity_bucket": _severity_bucket(cluster.avg_severity, cluster.safety_related),
         "priority_score": cluster.priority_score,
         "trend": cluster.trend,
         "confidence": cluster.confidence,
@@ -230,6 +229,7 @@ def issue_evidence(issue_id: int):
                 "snippet": mention.snippet,
                 "sentiment": mention.sentiment,
                 "severity": mention.severity,
+                "safety_related": mention.safety_related,
             },
         })
     session.close()
@@ -257,6 +257,8 @@ def feedback_by_month(vehicle: str = Query(...), month: str = Query(..., descrip
 
     reviews: dict[int, dict] = {}
     for m in mentions:
+        if not (m.feature_name or "").strip():
+            continue  # blank feature from a bad extraction — not a usable tag
         clean = m.clean_feedback
         raw = clean.raw_feedback if clean else None
         key = clean.id
@@ -269,7 +271,11 @@ def feedback_by_month(vehicle: str = Query(...), month: str = Query(..., descrip
                 "published": raw.created_at.isoformat() if raw and raw.created_at else None,
                 "tags": [],
             }
-        reviews[key]["tags"].append({"feature": m.feature_name, "sentiment": m.sentiment, "snippet": m.snippet})
+        reviews[key]["tags"].append({
+            "feature": m.feature_name,
+            "sentiment": m.sentiment or "neutral",
+            "snippet": m.snippet,
+        })
 
     out = list(reviews.values())
     session.close()

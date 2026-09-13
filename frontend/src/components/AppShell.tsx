@@ -6,53 +6,97 @@ interface Props {
   onSelectVehicle: (v: string) => void;
   activePage: "overview" | "insights";
   onNavigate: (page: "overview" | "insights") => void;
+  compareMode: boolean;
+  onToggleCompare: () => void;
+  compareVehicle: string;
+  onSelectCompareVehicle: (v: string) => void;
   children: ReactNode;
 }
 
-/** Top-level shell: nav + vehicle selector, per DASHBOARD.md section 11. */
-export function AppShell({ vehicles, selectedVehicle, onSelectVehicle, activePage, onNavigate, children }: Props) {
+/** Top-level shell: nav + vehicle selector(s), per DASHBOARD.md section 11.
+ * Compare mode (Overview tab only) adds a second vehicle picker so two
+ * full dashboards can be shown side by side. */
+export function AppShell({
+  vehicles,
+  selectedVehicle,
+  onSelectVehicle,
+  activePage,
+  onNavigate,
+  compareMode,
+  onToggleCompare,
+  compareVehicle,
+  onSelectCompareVehicle,
+  children,
+}: Props) {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+        <div className={`mx-auto flex items-center justify-between px-6 py-4 ${compareMode ? "max-w-[1500px]" : "max-w-6xl"}`}>
           <div className="flex items-center gap-8">
             <span className="text-lg font-semibold tracking-tight text-slate-900">AspectVoice</span>
             <nav className="flex gap-6 text-sm font-medium text-slate-500">
               <button
                 onClick={() => onNavigate("overview")}
-                className={`border-b-2 pb-4 -mb-4 ${
-                  activePage === "overview" ? "border-slate-900 text-slate-900" : "border-transparent hover:text-slate-700"
-                }`}
+                className={`border-b-2 pb-4 -mb-4 ${activePage === "overview" ? "border-slate-900 text-slate-900" : "border-transparent hover:text-slate-700"
+                  }`}
               >
                 Overview
               </button>
               <button
                 onClick={() => onNavigate("insights")}
-                className={`border-b-2 pb-4 -mb-4 ${
-                  activePage === "insights" ? "border-slate-900 text-slate-900" : "border-transparent hover:text-slate-700"
-                }`}
+                className={`border-b-2 pb-4 -mb-4 ${activePage === "insights" ? "border-slate-900 text-slate-900" : "border-transparent hover:text-slate-700"
+                  }`}
               >
                 Product Insights
               </button>
             </nav>
           </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-medium text-slate-500">Vehicle</label>
-            <select
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900"
-              value={selectedVehicle}
-              onChange={(e) => onSelectVehicle(e.target.value)}
-            >
-              {vehicles.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
+          <div className="flex items-center gap-3">
+            {activePage === "overview" && vehicles.length > 1 && (
+              <button
+                onClick={onToggleCompare}
+                className={`rounded-lg border px-3 py-1.5 text-xs font-medium ${compareMode
+                    ? "border-slate-900 bg-slate-900 text-white"
+                    : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+              >
+                {compareMode ? "Exit Compare" : "Compare"}
+              </button>
+            )}
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-medium text-slate-500">Vehicle</label>
+              <select
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900"
+                value={selectedVehicle}
+                onChange={(e) => onSelectVehicle(e.target.value)}
+              >
+                {vehicles.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {compareMode && activePage === "overview" && (
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-medium text-slate-500">vs.</label>
+                <select
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900"
+                  value={compareVehicle}
+                  onChange={(e) => onSelectCompareVehicle(e.target.value)}
+                >
+                  {vehicles.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+      <main className={`mx-auto px-6 py-8 ${compareMode ? "max-w-[1500px]" : "max-w-6xl"}`}>{children}</main>
     </div>
   );
 }

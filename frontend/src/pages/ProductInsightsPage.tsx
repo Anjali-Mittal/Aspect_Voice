@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchFeatures, fetchFeatureSummary, fetchIssues } from "../api/client";
-import type { FeatureSummary, IssueSummary } from "../api/client";
+import type { Feature, FeatureSummary, IssueSummary } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
 import { TrendBadge } from "../components/TrendBadge";
 
@@ -17,8 +17,11 @@ const SEVERITY_STYLES: Record<string, string> = {
   low: "text-slate-600 bg-slate-100",
 };
 
+const UNCATEGORIZED = "Uncategorized";
+
 export function ProductInsightsPage({ vehicle, onOpenEvidence }: Props) {
-  const [features, setFeatures] = useState<{ feature: string; description: string }[]>([]);
+  const [features, setFeatures] = useState<Feature[]>([]);
+  const [openCategories, setOpenCategories] = useState<Set<string>>(new Set());
   const [selectedFeature, setSelectedFeature] = useState<string | null>(null);
   const [featureSummary, setFeatureSummary] = useState<FeatureSummary | null>(null);
   const [issues, setIssues] = useState<IssueSummary[]>([]);
@@ -30,6 +33,7 @@ export function ProductInsightsPage({ vehicle, onOpenEvidence }: Props) {
   useEffect(() => {
     if (!vehicle) return;
     fetchFeatures(vehicle).then(setFeatures).catch(() => setFeatures([]));
+    setOpenCategories(new Set()); // all collapsed by default, including on vehicle switch
     setSelectedFeature(null);
     setFeatureSummary(null);
   }, [vehicle]);
@@ -60,6 +64,28 @@ export function ProductInsightsPage({ vehicle, onOpenEvidence }: Props) {
     }
   }
 
+  function toggleCategory(category: string) {
+    setOpenCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      return next;
+    });
+  }
+
+  // group by category, preserving first-seen order; features without a
+  // category (not yet categorized) fall into a trailing "Uncategorized" group
+  const groups: { category: string; features: Feature[] }[] = [];
+  const groupIndex = new Map<string, number>();
+  for (const f of features) {
+    const category = f.category || UNCATEGORIZED;
+    if (!groupIndex.has(category)) {
+      groupIndex.set(category, groups.length);
+      groups.push({ category, features: [] });
+    }
+    groups[groupIndex.get(category)!].features.push(f);
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -78,20 +104,40 @@ export function ProductInsightsPage({ vehicle, onOpenEvidence }: Props) {
           {features.length === 0 ? (
             <EmptyState message="No feature ontology discovered yet." />
           ) : (
-            <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-              {features.map((f, i) => (
-                <button
-                  key={f.feature}
-                  onClick={() => handleSelectFeature(f.feature)}
-                  className={`block w-full px-3 py-2 text-left text-sm ${i > 0 ? "border-t border-slate-100" : ""} ${
-                    selectedFeature === f.feature
-                      ? "bg-slate-900 text-white"
-                      : "text-slate-700 hover:bg-slate-50"
-                  }`}
-                >
-                  {f.feature}
-                </button>
-              ))}
+            <div className="space-y-2">
+              {groups.map(({ category, features: groupFeatures }) => {
+                const isOpen = openCategories.has(category);
+                return (
+                  <div key={category} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <button
+                      onClick={() => toggleCategory(category)}
+                      className="flex w-full items-center justify-between px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      <span>{category}</span>
+                      <span className="flex items-center gap-2 text-xs text-slate-400">
+                        {groupFeatures.length}
+                        <span className={`transition-transform ${isOpen ? "rotate-90" : ""}`}>›</span>
+                      </span>
+                    </button>
+                    {isOpen && (
+                      <div className="border-t border-slate-100">
+                        {groupFeatures.map((f) => (
+                          <button
+                            key={f.feature}
+                            onClick={() => handleSelectFeature(f.feature)}
+                            className={`block w-full border-t border-slate-100 px-3 py-2 pl-5 text-left text-sm first:border-t-0 ${selectedFeature === f.feature
+                                ? "bg-slate-900 text-white"
+                                : "text-slate-700 hover:bg-slate-50"
+                              }`}
+                          >
+                            {f.feature}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </aside>
@@ -150,11 +196,10 @@ export function ProductInsightsPage({ vehicle, onOpenEvidence }: Props) {
               <button
                 key={f}
                 onClick={() => setPriorityFilter(f)}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium ${
-                  priorityFilter === f
+                className={`rounded-full px-3 py-1.5 text-xs font-medium ${priorityFilter === f
                     ? "bg-slate-900 text-white"
                     : "border border-slate-300 text-slate-600 hover:bg-slate-100"
-                }`}
+                  }`}
               >
                 {f === "all" ? "All Issues" : f === "high" ? "High Priority" : "Emerging"}
               </button>

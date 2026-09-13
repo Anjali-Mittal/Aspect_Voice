@@ -9,6 +9,7 @@ from app.pipeline.ingest import run_ingestion
 from app.pipeline.relevance_filter import run_relevance_filter
 from app.pipeline.cleaning import run_cleaning
 from app.pipeline.ontology_discovery import run_ontology_discovery
+from app.pipeline.categorize_features import run_categorize_features
 from app.pipeline.aspect_extraction import run_aspect_extraction
 from app.pipeline.clustering_scoring import run_clustering_and_scoring
 from app.pipeline.scheduler import run_if_due
@@ -36,6 +37,11 @@ def ontology_discovery():
     return run_ontology_discovery()
 
 
+@router.post("/categorize-features")
+def categorize_features():
+    return run_categorize_features()
+
+
 @router.post("/aspect-extraction")
 def aspect_extraction():
     return run_aspect_extraction()
@@ -55,6 +61,7 @@ def run_all():
     results["relevance_filter"] = run_relevance_filter()
     results["cleaning"] = run_cleaning()
     results["ontology_discovery"] = run_ontology_discovery()
+    results["categorize_features"] = run_categorize_features()
     results["aspect_extraction"] = run_aspect_extraction()
     results["cluster_score"] = run_clustering_and_scoring()
     return results
