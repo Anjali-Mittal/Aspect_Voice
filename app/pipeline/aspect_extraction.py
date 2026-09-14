@@ -3,6 +3,25 @@ from app.config import get_config
 from app.models.db import CleanFeedback, FeatureOntology, AspectMention, get_session_factory
 from app.llm.client import call_llm_json, LLMError
 from collections import defaultdict
+from rapidfuzz import process, fuzz
+
+FEATURE_MATCH_THRESHOLD = 80  # rapidfuzz score, 0-100
+
+
+def _snap_to_ontology(raw_feature: str, ontology_names: list[str]) -> str:
+    """LLM prompt says 'must match list exactly' but drifts anyway
+    (e.g. 'Vehicle Reliability' vs ontology's 'Reliability'). Snap to
+    nearest known feature name instead of trusting raw LLM output —
+    this is what was creating duplicate feature buckets downstream in
+    clustering_scoring.py (which groups by exact feature_name string).
+    If nothing scores above threshold, keep raw text as-is (genuinely
+    new feature the ontology missed — don't force a bad match)."""
+    if not ontology_names:
+        return raw_feature
+    match = process.extractOne(raw_feature, ontology_names, scorer=fuzz.token_sort_ratio)
+    if match and match[1] >= FEATURE_MATCH_THRESHOLD:
+        return match[0]
+    return raw_feature
 
 PROMPT_TEMPLATE = """Product: {product_name}
 Known feature list (use ONLY these names, do not invent new ones):
@@ -75,6 +94,7 @@ def run_aspect_extraction():
             continue
 
         feature_list = "\n".join(f"- {f.feature_name}: {f.description}" for f in features)
+        ontology_names = [f.feature_name for f in features]
         total_batches = (len(rows) + batch_size - 1) // batch_size
 
         for i in range(0, len(rows), batch_size):
@@ -123,6 +143,7 @@ def run_aspect_extraction():
                         feature = (m.get("feature") or "").strip()
                         if not feature:
                             continue  # LLM returned an empty feature — not a usable tag, skip
+                        feature = _snap_to_ontology(feature, ontology_names)
                         sentiment = (m.get("sentiment") or "neutral").strip().lower()
                         if sentiment not in ("positive", "negative", "neutral"):
                             sentiment = "neutral"

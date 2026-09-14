@@ -181,12 +181,20 @@ def run_clustering_and_scoring():
                 continue
 
             issues_in = result.get("issues", [])
+            malformed = [i for i in issues_in if not isinstance(i, dict)]
+            if malformed:
+                logger.warning(
+                    "clustering: LLM returned %d non-dict issue entries for product=%s feature=%s, dropping them: %r",
+                    len(malformed), product_name, feature_name, malformed[:3],
+                )
+            issues_in = [i for i in issues_in if isinstance(i, dict)]
             if not issues_in:
-                skipped_features[skip_key] = "LLM returned zero issues for this feature"
+                skipped_features[skip_key] = "LLM returned zero usable issues for this feature"
 
             new_clusters = []  # (IssueCluster, [member AspectMention,...])
             for issue in issues_in:
-                members = [mentions[idx] for idx in issue.get("member_indices", []) if idx < len(mentions)]
+                raw_indices = issue.get("member_indices", [])
+                members = [mentions[idx] for idx in raw_indices if isinstance(idx, int) and 0 <= idx < len(mentions)]
                 if len(members) < min_cluster_size:
                     logger.warning(
                         "clustering: dropped issue '%s' for product=%s feature=%s — only %d members, need %d",

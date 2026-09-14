@@ -455,6 +455,7 @@ def overview(vehicle: str = Query(...)):
     session, cfg = _session()
     high_priority_threshold = cfg["pipeline"]["high_priority_threshold"]
     min_cluster_size = cfg["pipeline"]["min_cluster_size"]
+    top_strengths_threshold = cfg["pipeline"]["top_strengths_positive_pct_threshold"]
 
     clean_count = (
         session.query(CleanFeedback)
@@ -484,6 +485,21 @@ def overview(vehicle: str = Query(...)):
     high_priority = [i for i in issues if (i.priority_score or 0) >= high_priority_threshold]
     emerging = [i for i in issues if i.trend == "increasing"]
 
+    # top_pain_points is meant to be one row per feature/category, not per
+    # cluster — a feature can legitimately have several distinct IssueCluster
+    # rows (different root causes), and without this dedup the same feature
+    # name shows up multiple times in the top-5 (see: "Vehicle Reliability"
+    # appearing twice — general dissatisfaction cluster + separate
+    # shuts-down-in-traffic cluster). `issues` is already sorted by
+    # priority_score desc, so the first row seen per feature is its best.
+    best_per_feature = {}
+    for i in issues:
+        if i.feature_name not in best_per_feature:
+            best_per_feature[i.feature_name] = i
+    top_pain_point_clusters = sorted(
+        best_per_feature.values(), key=lambda i: i.priority_score or 0, reverse=True
+    )
+
     # top strengths: per-feature positive ratio, among features with enough
     # mentions to be meaningful (reuses min_cluster_size as the noise floor)
     by_feature = defaultdict(lambda: defaultdict(int))
@@ -496,6 +512,8 @@ def overview(vehicle: str = Query(...)):
         if total < min_cluster_size:
             continue
         pos_pct = 100 * counts.get("positive", 0) / total
+        if pos_pct <= top_strengths_threshold:  # only genuine strengths qualify
+            continue
         strengths.append({"feature": feature_name, "positive_pct": round(pos_pct, 1), "mentions": total})
     strengths.sort(key=lambda s: s["positive_pct"], reverse=True)
 
@@ -533,7 +551,7 @@ def overview(vehicle: str = Query(...)):
         "top_pain_points": [{
             "id": i.id, "feature": i.feature_name, "issue": i.issue_summary,
             "mentions": i.mention_count, "priority_score": i.priority_score, "trend": i.trend,
-        } for i in issues[:5]],
+        } for i in top_pain_point_clusters[:5]],
         "emerging_issues": [{
             "id": i.id, "feature": i.feature_name, "issue": i.issue_summary, "trend": i.trend,
         } for i in emerging],

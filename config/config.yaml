@@ -133,6 +133,7 @@ pipeline:
   min_cluster_size: 3
   trend_window_days: 30
   high_priority_threshold: 0.6   # priority_score at/above this = "high priority" in /overview KPIs
+  top_strengths_positive_pct_threshold: 55   # only features above this positive% qualify for Top Strengths
 
 storage:
   db_url: "${DATABASE_URL}"   # NeonDB Postgres connection string, from env — never hardcoded
