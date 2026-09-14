@@ -88,6 +88,7 @@ export interface IssueSummary {
   confidence: number;
   confidence_basis: string; // "evidence_volume" — not a statistical measure
   examples: string[];
+  sentiment?: "positive" | "negative" | "neutral" | string;
 }
 
 export interface IssueDetail {
@@ -151,6 +152,7 @@ export interface IssueFilters {
   trend?: string;
   severity?: string;
   min_priority?: number;
+  sentiment?: string;
 }
 
 export async function fetchIssues(vehicle: string, filters: IssueFilters = {}): Promise<IssueSummary[]> {

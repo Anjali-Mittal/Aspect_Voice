@@ -2,14 +2,13 @@ import { useEffect, useState } from "react";
 import { fetchFeatures, fetchFeatureSummary, fetchIssues } from "../api/client";
 import type { Feature, FeatureSummary, IssueSummary } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
-import { TrendBadge } from "../components/TrendBadge";
 
 interface Props {
   vehicle: string;
   onOpenEvidence: (issueId: number) => void;
 }
 
-type PriorityFilter = "all" | "high" | "emerging";
+type SentimentFilter = "negative" | "positive" | "neutral";
 
 const SEVERITY_STYLES: Record<string, string> = {
   high: "text-red-700 bg-red-50",
@@ -25,7 +24,7 @@ export function ProductInsightsPage({ vehicle, onOpenEvidence }: Props) {
   const [selectedFeature, setSelectedFeature] = useState<string | null>(null);
   const [featureSummary, setFeatureSummary] = useState<FeatureSummary | null>(null);
   const [issues, setIssues] = useState<IssueSummary[]>([]);
-  const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
+  const [sentimentFilter, setSentimentFilter] = useState<SentimentFilter>("negative");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,21 +37,21 @@ export function ProductInsightsPage({ vehicle, onOpenEvidence }: Props) {
     setFeatureSummary(null);
   }, [vehicle]);
 
-  // load issues whenever vehicle, selected feature, or priority filter changes
+  // load issues whenever vehicle, selected feature, or sentiment filter changes
   useEffect(() => {
     if (!vehicle) return;
     setLoading(true);
     setError(null);
-    const filters: { feature?: string; trend?: string; min_priority?: number } = {};
+    const filters: { feature?: string; sentiment?: string } = {
+      sentiment: sentimentFilter,
+    };
     if (selectedFeature) filters.feature = selectedFeature;
-    if (priorityFilter === "emerging") filters.trend = "increasing";
-    if (priorityFilter === "high") filters.min_priority = 0.6;
 
     fetchIssues(vehicle, filters)
       .then(setIssues)
-      .catch(() => setError("Could not load issues. Is the backend running?"))
+      .catch(() => setError("Could not load insights. Is the backend running?"))
       .finally(() => setLoading(false));
-  }, [vehicle, selectedFeature, priorityFilter]);
+  }, [vehicle, selectedFeature, sentimentFilter]);
 
   function handleSelectFeature(feature: string) {
     const next = selectedFeature === feature ? null : feature;
@@ -73,8 +72,7 @@ export function ProductInsightsPage({ vehicle, onOpenEvidence }: Props) {
     });
   }
 
-  // group by category, preserving first-seen order; features without a
-  // category (not yet categorized) fall into a trailing "Uncategorized" group
+  // group by category; features without a category fall into a trailing "Uncategorized" group
   const groups: { category: string; features: Feature[] }[] = [];
   const groupIndex = new Map<string, number>();
   for (const f of features) {
@@ -84,6 +82,21 @@ export function ProductInsightsPage({ vehicle, onOpenEvidence }: Props) {
       groups.push({ category, features: [] });
     }
     groups[groupIndex.get(category)!].features.push(f);
+  }
+
+  // sort categories by number of sub-categories (descending), ties alphabetical
+  groups.sort((a, b) => {
+    if (a.category === UNCATEGORIZED) return 1;
+    if (b.category === UNCATEGORIZED) return -1;
+    if (b.features.length !== a.features.length) {
+      return b.features.length - a.features.length;
+    }
+    return a.category.localeCompare(b.category);
+  });
+
+  // sort sub-categories within each category alphabetically
+  for (const group of groups) {
+    group.features.sort((a, b) => a.feature.localeCompare(b.feature));
   }
 
   return (
@@ -190,40 +203,42 @@ export function ProductInsightsPage({ vehicle, onOpenEvidence }: Props) {
             </section>
           )}
 
-          {/* Priority / R&D filter tabs — DASHBOARD.md section 7 */}
+          {/* Sentiment filter tabs */}
           <div className="flex gap-2">
-            {(["all", "high", "emerging"] as PriorityFilter[]).map((f) => (
+            {(["negative", "positive", "neutral"] as SentimentFilter[]).map((f) => (
               <button
                 key={f}
-                onClick={() => setPriorityFilter(f)}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium ${priorityFilter === f
-                    ? "bg-slate-900 text-white"
-                    : "border border-slate-300 text-slate-600 hover:bg-slate-100"
+                onClick={() => setSentimentFilter(f)}
+                className={`rounded-full px-3.5 py-1.5 text-xs font-medium cursor-pointer transition capitalize ${sentimentFilter === f
+                    ? "bg-slate-900 text-white shadow-sm"
+                    : "border border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
                   }`}
               >
-                {f === "all" ? "All Issues" : f === "high" ? "High Priority" : "Emerging"}
+                {f}
               </button>
             ))}
           </div>
 
-          {/* Ranked issue table — DASHBOARD.md section 6 */}
+          {/* Ranked issue/insight table */}
           <section>
             {loading ? (
               <div className="text-sm text-slate-400">Loading…</div>
             ) : error ? (
               <EmptyState message={error} />
             ) : issues.length === 0 ? (
-              <EmptyState message="No issues match this filter yet." />
+              <EmptyState message={`No ${sentimentFilter} feedback matches this filter yet.`} />
             ) : (
               <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                      <th className="px-4 py-2 font-medium">Issue</th>
+                      <th className="px-4 py-2 font-medium">
+                        {sentimentFilter === "negative" ? "Issue" : sentimentFilter === "positive" ? "Strength / Highlight" : "Observation"}
+                      </th>
                       <th className="px-4 py-2 font-medium">Mentions</th>
-                      <th className="px-4 py-2 font-medium">Severity</th>
-                      <th className="px-4 py-2 font-medium">Trend</th>
-                      <th className="px-4 py-2 font-medium">Priority</th>
+                      <th className="px-4 py-2 font-medium">
+                        {sentimentFilter === "negative" ? "Severity" : "Sentiment"}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -239,15 +254,17 @@ export function ProductInsightsPage({ vehicle, onOpenEvidence }: Props) {
                         </td>
                         <td className="px-4 py-3 text-slate-600">{issue.mentions}</td>
                         <td className="px-4 py-3">
-                          <span className={`rounded px-2 py-0.5 text-xs font-medium capitalize ${SEVERITY_STYLES[issue.severity_bucket]}`}>
-                            {issue.severity_bucket}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <TrendBadge trend={issue.trend} />
-                        </td>
-                        <td className="px-4 py-3 font-medium text-slate-800">
-                          {Math.round(issue.priority_score * 100)}
+                          {sentimentFilter === "negative" ? (
+                            <span className={`rounded px-2 py-0.5 text-xs font-medium capitalize ${SEVERITY_STYLES[issue.severity_bucket] ?? "text-slate-600 bg-slate-100"}`}>
+                              {issue.severity_bucket}
+                            </span>
+                          ) : (
+                            <span className={`rounded px-2 py-0.5 text-xs font-medium capitalize ${
+                              sentimentFilter === "positive" ? "text-emerald-700 bg-emerald-50" : "text-slate-600 bg-slate-100"
+                            }`}>
+                              {sentimentFilter}
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))}

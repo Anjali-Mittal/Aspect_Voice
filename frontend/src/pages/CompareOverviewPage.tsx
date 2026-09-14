@@ -44,12 +44,15 @@ function CompareKpiCard({ label, vehicleA, vehicleB, a, b }: CompareKpiCardProps
 /** Custom legend — recharts' built-in Legend swatch is always a solid line
  * regardless of strokeDasharray, so it can't actually show which vehicle is
  * solid vs dashed. This draws the real line styles. */
-function ChartLegend({ vehicleA, vehicleB }: { vehicleA: string; vehicleB: string }) {
-    const LineSample = ({ dashed }: { dashed: boolean }) => (
+function LineSample({ dashed }: { dashed: boolean }) {
+    return (
         <svg width="24" height="10" className="shrink-0">
             <line x1="0" y1="5" x2="24" y2="5" stroke="#64748b" strokeWidth="2" strokeDasharray={dashed ? "5 3" : undefined} />
         </svg>
     );
+}
+
+function ChartLegend({ vehicleA, vehicleB }: { vehicleA: string; vehicleB: string }) {
     return (
         <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-slate-600">
             <span className="flex items-center gap-1.5">
@@ -143,9 +146,18 @@ export function CompareOverviewPage({ vehicleA, vehicleB }: Props) {
     const [error, setError] = useState<string | null>(null);
     const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
     const [listTab, setListTab] = useState<"strengths" | "pain">("pain");
+    const [clipToLater, setClipToLater] = useState<boolean>(true);
+    const [selectedYear, setSelectedYear] = useState<string>("all");
 
     useEffect(() => {
-        if (!vehicleA || !vehicleB) return;
+        setSelectedYear("all");
+    }, [vehicleA, vehicleB]);
+
+    useEffect(() => {
+        if (!vehicleA || !vehicleB) {
+            setLoading(false);
+            return;
+        }
         setLoading(true);
         setError(null);
         Promise.all([fetchOverview(vehicleA), fetchOverview(vehicleB)])
@@ -159,16 +171,34 @@ export function CompareOverviewPage({ vehicleA, vehicleB }: Props) {
 
     if (loading) return <div className="text-sm text-slate-400">Loading…</div>;
     if (error) return <EmptyState message={error} />;
+    if (!vehicleA || !vehicleB) return <EmptyState message="Please select two vehicles to compare." />;
     if (!dataA || !dataB) return <EmptyState message="No data yet." />;
 
     const hasFeedback = dataA.kpis.feedback_analyzed > 0 || dataB.kpis.feedback_analyzed > 0;
 
-    // merge the two trend series on month so one chart can plot both.
-    // Plotted as % of that month's total mentions, not raw counts — a
-    // vehicle with far more total reviews would otherwise just draw taller
-    // lines regardless of its actual sentiment ratio.
+    // Determine the later vehicle's starting month so timeline can be clipped
+    const firstMonthA = dataA.sentiment_trend.length > 0 ? dataA.sentiment_trend[0].month : null;
+    const firstMonthB = dataB.sentiment_trend.length > 0 ? dataB.sentiment_trend[0].month : null;
+    const laterStartMonth = (firstMonthA && firstMonthB)
+        ? (firstMonthA > firstMonthB ? firstMonthA : firstMonthB)
+        : (firstMonthA || firstMonthB || null);
+    const laterVehicle = (firstMonthA && firstMonthB && firstMonthA !== firstMonthB)
+        ? (firstMonthA > firstMonthB ? vehicleA : vehicleB)
+        : null;
+
+    // Merge month series
     const monthSet = new Set([...dataA.sentiment_trend.map((p) => p.month), ...dataB.sentiment_trend.map((p) => p.month)]);
-    const months = Array.from(monthSet).sort();
+    const allMonths = Array.from(monthSet).sort();
+
+    // If clipToLater is active, only include months from the later vehicle's start onwards
+    const baseMonths = allMonths.filter((m) => !clipToLater || !laterStartMonth || m >= laterStartMonth);
+
+    // Available years in the active range
+    const availableYears = Array.from(new Set(baseMonths.map((m) => m.slice(0, 4)))).sort();
+
+    // Filter by selected year
+    const displayedMonths = baseMonths.filter((m) => selectedYear === "all" || m.startsWith(selectedYear));
+
     const aByMonth = Object.fromEntries(dataA.sentiment_trend.map((p) => [p.month, p]));
     const bByMonth = Object.fromEntries(dataB.sentiment_trend.map((p) => [p.month, p]));
     const toPct = (point: SentimentTrendPoint | undefined, key: "positive" | "negative") => {
@@ -176,22 +206,25 @@ export function CompareOverviewPage({ vehicleA, vehicleB }: Props) {
         const total = point.positive + point.neutral + point.negative;
         return total > 0 ? Math.round((point[key] / total) * 1000) / 10 : null;
     };
-    const merged = months.map((month) => ({
+    const merged = displayedMonths.map((month) => ({
         month,
         a_positive: toPct(aByMonth[month], "positive"),
         a_negative: toPct(aByMonth[month], "negative"),
         b_positive: toPct(bByMonth[month], "positive"),
         b_negative: toPct(bByMonth[month], "negative"),
     }));
-    const hasTrend = months.length > 0;
+    const hasTrend = merged.length > 0;
 
     return (
         <div className="space-y-8">
             <div>
                 <h1 className="text-xl font-semibold text-slate-900">
-                    {vehicleA} <span className="font-normal text-slate-400">vs</span> {vehicleB}
+                    Competitor Analysis
                 </h1>
-                <p className="mt-1 text-sm text-slate-500">Side-by-side customer voice comparison.</p>
+                <p className="mt-1 text-sm text-slate-500">
+                    Side-by-side comparison of <span className="font-semibold text-slate-800">{vehicleA}</span> vs{" "}
+                    <span className="font-semibold text-slate-800">{vehicleB}</span> customer voice.
+                </p>
             </div>
 
             {!hasFeedback ? (
@@ -230,13 +263,67 @@ export function CompareOverviewPage({ vehicleA, vehicleB }: Props) {
                     </div>
 
                     <section>
-                        <h2 className="mb-3 text-sm font-semibold text-slate-700">Sentiment Trend (% Positive / Negative)</h2>
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <h2 className="text-sm font-semibold text-slate-700">Sentiment Trend (% Positive / Negative)</h2>
+                                <p className="mt-0.5 text-xs text-slate-400">
+                                    {laterVehicle && clipToLater
+                                        ? `Clipped to ${laterVehicle}'s timeline (from ${laterStartMonth})`
+                                        : "Click a point to see that month's reviews."}
+                                </p>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-3">
+                                {/* Year Selector */}
+                                {availableYears.length > 1 && (
+                                    <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 text-xs font-medium shadow-xs">
+                                        <button
+                                            onClick={() => setSelectedYear("all")}
+                                            className={`rounded-md px-3 py-1 cursor-pointer transition ${selectedYear === "all"
+                                                ? "bg-slate-900 text-white shadow-xs"
+                                                : "text-slate-600 hover:text-slate-900"
+                                            }`}
+                                        >
+                                            All Years
+                                        </button>
+                                        {availableYears.map((yr) => (
+                                            <button
+                                                key={yr}
+                                                onClick={() => setSelectedYear(yr)}
+                                                className={`rounded-md px-3 py-1 cursor-pointer transition ${selectedYear === yr
+                                                    ? "bg-slate-900 text-white shadow-xs"
+                                                    : "text-slate-600 hover:text-slate-900"
+                                                }`}
+                                            >
+                                                {yr}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Clip to later vehicle toggle */}
+                                {laterVehicle && (
+                                    <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 cursor-pointer select-none rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 shadow-xs hover:bg-slate-50">
+                                        <input
+                                            type="checkbox"
+                                            checked={clipToLater}
+                                            onChange={(e) => {
+                                                setClipToLater(e.target.checked);
+                                                setSelectedYear("all");
+                                            }}
+                                            className="h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                                        />
+                                        <span>Clip to later vehicle</span>
+                                    </label>
+                                )}
+                            </div>
+                        </div>
+
                         {!hasTrend ? (
-                            <EmptyState message="Not enough dated feedback to show a trend yet." />
+                            <EmptyState message="Not enough dated feedback to show a trend for this selection." />
                         ) : (
                             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                                 <ChartLegend vehicleA={vehicleA} vehicleB={vehicleB} />
-                                <p className="mb-2 text-xs text-slate-400">Click a point to see that month's reviews.</p>
                                 <ResponsiveContainer width="100%" height={280}>
                                     <LineChart
                                         data={merged}

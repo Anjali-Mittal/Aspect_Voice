@@ -10,9 +10,8 @@ import { EvidenceExplorerPage } from "./pages/EvidenceExplorerPage";
 function App() {
   const [vehicles, setVehicles] = useState<string[]>([]);
   const [selectedVehicle, setSelectedVehicle] = useState("");
-  const [activePage, setActivePage] = useState<"overview" | "insights">("overview");
+  const [activePage, setActivePage] = useState<"overview" | "insights" | "competitor">("overview");
   const [openIssueId, setOpenIssueId] = useState<number | null>(null);
-  const [compareMode, setCompareMode] = useState(false);
   const [compareVehicle, setCompareVehicle] = useState("");
   const [loading, setLoading] = useState(true);
   const [isWaking, setIsWaking] = useState(false);
@@ -148,19 +147,17 @@ function App() {
       onSelectVehicle={setSelectedVehicle}
       activePage={activePage}
       onNavigate={setActivePage}
-      compareMode={compareMode}
-      onToggleCompare={() => setCompareMode((v) => !v)}
       compareVehicle={compareVehicle}
       onSelectCompareVehicle={setCompareVehicle}
     >
-      {activePage === "overview" ? (
-        compareMode ? (
-          <CompareOverviewPage vehicleA={selectedVehicle} vehicleB={compareVehicle} />
-        ) : (
-          <OverviewPage vehicle={selectedVehicle} />
-        )
-      ) : (
+      {activePage === "overview" && (
+        <OverviewPage vehicle={selectedVehicle} />
+      )}
+      {activePage === "insights" && (
         <ProductInsightsPage vehicle={selectedVehicle} onOpenEvidence={setOpenIssueId} />
+      )}
+      {activePage === "competitor" && (
+        <CompareOverviewPage vehicleA={selectedVehicle} vehicleB={compareVehicle} />
       )}
       {openIssueId !== null && (
         <EvidenceExplorerPage issueId={openIssueId} onClose={() => setOpenIssueId(null)} />

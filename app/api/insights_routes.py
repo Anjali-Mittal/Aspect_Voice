@@ -4,6 +4,7 @@ DASHBOARD.md section 14/15: no fake zeroes, every insight has an evidence
 path back to real rows).
 """
 from collections import defaultdict
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Query
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
@@ -14,6 +15,9 @@ from app.models.db import (
 )
 
 router = APIRouter(tags=["insights"])
+
+# In-memory storage for positive and neutral grouped clusters
+_VIRTUAL_CLUSTERS: dict[int, dict] = {}
 
 
 def _session():
@@ -121,10 +125,93 @@ def list_issues(
     trend: str | None = Query(None),
     severity: str | None = Query(None),
     min_priority: float | None = Query(None),
+    sentiment: str | None = Query("negative"),
 ):
-    """Priority-ranked list of real issues for R&D. Filters — DASHBOARD.md
-    section 8 — are applied server-side so the frontend never has to
-    reimplement ranking/filtering logic (section 12)."""
+    """Priority-ranked list of real issues and sentiment insights for R&D.
+    Supports negative issues (from IssueCluster) and positive/neutral customer voice insights."""
+    if sentiment in ("positive", "neutral"):
+        session, cfg = _session()
+        window_days = cfg["pipeline"]["trend_window_days"]
+        now = datetime.utcnow()
+        newer_cutoff = now - timedelta(days=window_days / 2)
+        older_cutoff = now - timedelta(days=window_days)
+
+        q = (
+            session.query(AspectMention)
+            .join(CleanFeedback, AspectMention.clean_feedback_id == CleanFeedback.id)
+            .filter(
+                CleanFeedback.product_name == vehicle,
+                CleanFeedback.is_duplicate_of.is_(None),
+                AspectMention.sentiment == sentiment,
+            )
+            .options(joinedload(AspectMention.clean_feedback))
+        )
+        if feature:
+            q = q.filter(AspectMention.feature_name == feature)
+        mentions = q.all()
+
+        by_feature = defaultdict(list)
+        for m in mentions:
+            if m.feature_name and m.feature_name.strip():
+                by_feature[m.feature_name].append(m)
+
+        out = []
+        for feat_name, m_list in by_feature.items():
+            count = len(m_list)
+            newer = sum(1 for m in m_list if m.clean_feedback and m.clean_feedback.created_at and m.clean_feedback.created_at >= newer_cutoff)
+            older = sum(1 for m in m_list if m.clean_feedback and m.clean_feedback.created_at and older_cutoff <= m.clean_feedback.created_at < newer_cutoff)
+            trend_val = "increasing" if newer > older else ("decreasing" if newer < older else "stable")
+            if trend and trend_val != trend:
+                continue
+
+            snippets = []
+            seen_snips = set()
+            for m in m_list:
+                snip = (m.snippet or "").strip()
+                if snip and snip not in seen_snips:
+                    seen_snips.add(snip)
+                    snippets.append(snip)
+
+            first_snip = snippets[0] if snippets else f"Customer feedback on {feat_name}"
+            prefix = "Praised: " if sentiment == "positive" else "Observation: "
+            summary_desc = f"{prefix}{first_snip}"
+
+            virtual_id = 100000 + (abs(hash(f"{vehicle}|{feat_name}|{sentiment}")) % 800000)
+            _VIRTUAL_CLUSTERS[virtual_id] = {
+                "vehicle": vehicle,
+                "feature": feat_name,
+                "sentiment": sentiment,
+                "summary": summary_desc,
+                "mention_ids": [m.id for m in m_list],
+                "count": count,
+                "trend": trend_val,
+                "snippets": snippets[:5],
+            }
+
+            priority = round(min(count / 30.0, 1.0), 2)
+            if min_priority is not None and priority < min_priority:
+                continue
+
+            out.append({
+                "id": virtual_id,
+                "feature": feat_name,
+                "issue": summary_desc,
+                "mentions": count,
+                "avg_severity": 0.0,
+                "safety_related": False,
+                "severity_bucket": "low",
+                "priority_score": priority,
+                "trend": trend_val,
+                "confidence": round(min(count / 15.0, 1.0), 2),
+                "confidence_basis": "evidence_volume",
+                "examples": snippets[:5],
+                "sentiment": sentiment,
+            })
+
+        session.close()
+        out.sort(key=lambda x: x["mentions"], reverse=True)
+        return out
+
     session, _ = _session()
     q = session.query(IssueCluster).filter_by(product_name=vehicle)
     if feature:
@@ -148,6 +235,7 @@ def list_issues(
         "confidence": r.confidence,
         "confidence_basis": "evidence_volume",  # not a statistical measure — see DASHBOARD.md section 15
         "examples": r.representative_snippets,
+        "sentiment": "negative",
     } for r in rows]
 
     if severity:
@@ -162,6 +250,49 @@ def issue_detail(issue_id: int):
     """Full cluster detail for the Priority / R&D view and the Evidence
     Explorer header — DASHBOARD.md section 7 and 9.1. Includes the monthly
     mention-count trend used for the evidence trend bar chart."""
+    if issue_id in _VIRTUAL_CLUSTERS:
+        vc = _VIRTUAL_CLUSTERS[issue_id]
+        session, _ = _session()
+        mentions = (
+            session.query(AspectMention)
+            .filter(AspectMention.id.in_(vc["mention_ids"]))
+            .options(joinedload(AspectMention.clean_feedback).joinedload(CleanFeedback.raw_feedback))
+            .all()
+        )
+        monthly = defaultdict(int)
+        source_groups = set()
+        for m in mentions:
+            cf = m.clean_feedback
+            if cf and cf.created_at:
+                monthly[cf.created_at.strftime("%Y-%m")] += 1
+            if cf and cf.raw_feedback:
+                source_groups.add(cf.raw_feedback.source)
+        monthly_trend = [{"month": k, "count": v} for k, v in sorted(monthly.items())]
+        session.close()
+
+        rec_text = (
+            f"Review positive customer reception around {vc['feature']} to identify competitive advantages."
+            if vc["sentiment"] == "positive"
+            else f"Monitor customer feedback and observations regarding {vc['feature']}."
+        )
+        return {
+            "id": issue_id,
+            "feature": vc["feature"],
+            "issue": vc["summary"],
+            "mentions": vc["count"],
+            "avg_severity": 0.0,
+            "safety_related": False,
+            "severity_bucket": "low",
+            "priority_score": round(min(vc["count"] / 30.0, 1.0), 2),
+            "trend": vc["trend"],
+            "confidence": round(min(vc["count"] / 15.0, 1.0), 2),
+            "confidence_basis": "evidence_volume",
+            "primary_context": f"{vc['sentiment'].capitalize()} customer feedback",
+            "recommended_investigation": rec_text,
+            "source_group_count": len(source_groups),
+            "monthly_trend": monthly_trend,
+        }
+
     session, _ = _session()
     cluster = session.query(IssueCluster).filter_by(id=issue_id).first()
     if cluster is None:
@@ -206,6 +337,37 @@ def issue_evidence(issue_id: int):
     that fed it, not just the top-5 representative snippets. Distinguishes
     Observed (raw text) from AI Interpretation (sentiment/severity/snippet)
     per DASHBOARD.md section 9.2."""
+    if issue_id in _VIRTUAL_CLUSTERS:
+        vc = _VIRTUAL_CLUSTERS[issue_id]
+        session, _ = _session()
+        mentions = (
+            session.query(AspectMention)
+            .filter(AspectMention.id.in_(vc["mention_ids"]))
+            .options(joinedload(AspectMention.clean_feedback).joinedload(CleanFeedback.raw_feedback))
+            .all()
+        )
+        out = []
+        for m in mentions:
+            clean = m.clean_feedback
+            raw = clean.raw_feedback if clean else None
+            out.append({
+                "observed": {
+                    "full_text": clean.clean_text if clean else None,
+                    "author": raw.author if raw else None,
+                    "source": raw.source if raw else None,
+                    "url": raw.url if raw else None,
+                    "published": raw.created_at.isoformat() if raw and raw.created_at else None,
+                },
+                "ai_interpretation": {
+                    "snippet": m.snippet,
+                    "sentiment": m.sentiment,
+                    "severity": m.severity,
+                    "safety_related": m.safety_related,
+                },
+            })
+        session.close()
+        return out
+
     session, _ = _session()
     members = (
         session.query(IssueClusterMember)

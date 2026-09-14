@@ -17,6 +17,11 @@ export function OverviewPage({ vehicle }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+  const [selectedYear, setSelectedYear] = useState<string>("all");
+
+  useEffect(() => {
+    setSelectedYear("all");
+  }, [vehicle]);
 
   useEffect(() => {
     if (!vehicle) return;
@@ -40,6 +45,11 @@ export function OverviewPage({ vehicle }: Props) {
 
   const { kpis, sentiment_trend, top_strengths, top_pain_points } = data;
   const hasFeedback = kpis.feedback_analyzed > 0;
+
+  const availableYears = Array.from(new Set(sentiment_trend.map((p) => p.month.slice(0, 4)))).sort();
+  const displayedTrend = selectedYear === "all"
+    ? sentiment_trend
+    : sentiment_trend.filter((p) => p.month.startsWith(selectedYear));
 
   return (
     <div className="space-y-8">
@@ -66,15 +76,45 @@ export function OverviewPage({ vehicle }: Props) {
           </div>
 
           <section>
-            <h2 className="mb-3 text-sm font-semibold text-slate-700">Sentiment Trend</h2>
-            {sentiment_trend.length === 0 ? (
-              <EmptyState message="Not enough dated feedback to show a trend yet." />
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-700">Sentiment Trend</h2>
+                <p className="mt-0.5 text-xs text-slate-400">Click a point on the chart to see that month's reviews.</p>
+              </div>
+              {availableYears.length > 1 && (
+                <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 text-xs font-medium shadow-xs">
+                  <button
+                    onClick={() => setSelectedYear("all")}
+                    className={`rounded-md px-3 py-1 cursor-pointer transition ${selectedYear === "all"
+                      ? "bg-slate-900 text-white shadow-xs"
+                      : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    All Years
+                  </button>
+                  {availableYears.map((yr) => (
+                    <button
+                      key={yr}
+                      onClick={() => setSelectedYear(yr)}
+                      className={`rounded-md px-3 py-1 cursor-pointer transition ${selectedYear === yr
+                        ? "bg-slate-900 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      {yr}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {displayedTrend.length === 0 ? (
+              <EmptyState message="Not enough dated feedback to show a trend for this selection." />
             ) : (
               <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <p className="mb-1 text-xs text-slate-400">Click a point on the chart to see that month's reviews.</p>
                 <ResponsiveContainer width="100%" height={260}>
                   <LineChart
-                    data={sentiment_trend}
+                    data={displayedTrend}
                     margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
                     onClick={(e) => {
                       if (e && typeof e.activeLabel === "string") setSelectedMonth(e.activeLabel);
