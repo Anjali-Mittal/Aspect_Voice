@@ -1,4 +1,4 @@
-# AspectVoice
+# Customer Voice Intelligence
 
 Turns scattered public feedback about a product into a priority-ranked list
 of real issues — usable directly by R&D.

@@ -35,16 +35,15 @@ One entry per feature id above, every id must appear exactly once.
 """
 
 
-def run_categorize_features():
+def run_categorize_features(product_name: str | None = None):
     cfg = get_config()
     Session = get_session_factory(cfg["storage"]["db_url"])
 
     with Session() as session:
-        uncategorized = (
-            session.query(FeatureOntology)
-            .filter(FeatureOntology.category.is_(None))
-            .all()
-        )
+        uncategorized_query = session.query(FeatureOntology).filter(FeatureOntology.category.is_(None))
+        if product_name:
+            uncategorized_query = uncategorized_query.filter(FeatureOntology.product_name == product_name)
+        uncategorized = uncategorized_query.all()
         by_product = defaultdict(list)
         for f in uncategorized:
             by_product[f.product_name].append((f.id, f.feature_name, f.description or ""))
@@ -54,6 +53,7 @@ def run_categorize_features():
 
     results = {}
     for product_name, features in by_product.items():
+        print(f"[categorize-features] {product_name}: categorizing {len(features)} features...", flush=True)
         # local index (0..n-1) for the prompt, not the real DB id — keeps
         # the prompt short and the LLM's job simple; mapped back below
         feature_lines = "\n".join(f"{i}. {name}: {desc}" for i, (_, name, desc) in enumerate(features))
@@ -61,6 +61,7 @@ def run_categorize_features():
         try:
             result = call_llm_json(prompt)
         except Exception as e:
+            print(f"[categorize-features] {product_name} FAILED — {str(e)[:150]}", flush=True)
             results[product_name] = {"error": str(e)[:300]}
             continue
 
@@ -80,6 +81,7 @@ def run_categorize_features():
                 write_session.query(FeatureOntology).filter_by(id=feature_id).update({"category": category})
                 updated += 1
             write_session.commit()
+        print(f"[categorize-features] {product_name} done — {updated} categorized", flush=True)
         results[product_name] = {"categorized": updated}
 
     return {"per_product": results}

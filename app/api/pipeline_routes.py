@@ -2,7 +2,7 @@
 Business logic lives in app/pipeline/*, this module only wires HTTP to it.
 """
 import os
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Query
 from app.config import get_config
 from app.models.db import PipelineRunLog, get_session_factory
 from app.pipeline.ingest import run_ingestion
@@ -16,54 +16,60 @@ from app.pipeline.scheduler import run_if_due
 
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 
+# Optional filter on every stage below — leave blank to run for every
+# product in config.targets, or pass one to run that product only
+# (e.g. "Ather 450S") without touching data for the others.
+ProductFilter = Query(default=None, description="Run for this product_name only (exact match). Omit to run for all products.")
+
 
 @router.post("/ingest")
-def ingest():
-    return run_ingestion()
+def ingest(product_name: str | None = ProductFilter):
+    return run_ingestion(product_name)
 
 
 @router.post("/relevance-filter")
-def relevance_filter():
-    return run_relevance_filter()
+def relevance_filter(product_name: str | None = ProductFilter):
+    return run_relevance_filter(product_name)
 
 
 @router.post("/cleaning")
-def cleaning():
-    return run_cleaning()
+def cleaning(product_name: str | None = ProductFilter):
+    return run_cleaning(product_name)
 
 
 @router.post("/ontology-discovery")
-def ontology_discovery():
-    return run_ontology_discovery()
+def ontology_discovery(product_name: str | None = ProductFilter):
+    return run_ontology_discovery(product_name)
 
 
 @router.post("/categorize-features")
-def categorize_features():
-    return run_categorize_features()
+def categorize_features(product_name: str | None = ProductFilter):
+    return run_categorize_features(product_name)
 
 
 @router.post("/aspect-extraction")
-def aspect_extraction():
-    return run_aspect_extraction()
+def aspect_extraction(product_name: str | None = ProductFilter):
+    return run_aspect_extraction(product_name)
 
 
 @router.post("/cluster-score")
-def cluster_score():
-    return run_clustering_and_scoring()
+def cluster_score(product_name: str | None = ProductFilter):
+    return run_clustering_and_scoring(product_name)
 
 
 @router.post("/run-all")
-def run_all():
+def run_all(product_name: str | None = ProductFilter):
     """Runs full pipeline end to end, in order. Idempotent — each stage skips
-    rows it's already processed, except clustering, which always rebuilds fresh."""
+    rows it's already processed, except clustering, which always rebuilds fresh.
+    Pass product_name to scope the entire run to one product."""
     results = {}
-    results["ingest"] = run_ingestion()
-    results["relevance_filter"] = run_relevance_filter()
-    results["cleaning"] = run_cleaning()
-    results["ontology_discovery"] = run_ontology_discovery()
-    results["categorize_features"] = run_categorize_features()
-    results["aspect_extraction"] = run_aspect_extraction()
-    results["cluster_score"] = run_clustering_and_scoring()
+    results["ingest"] = run_ingestion(product_name)
+    results["relevance_filter"] = run_relevance_filter(product_name)
+    results["cleaning"] = run_cleaning(product_name)
+    results["ontology_discovery"] = run_ontology_discovery(product_name)
+    results["categorize_features"] = run_categorize_features(product_name)
+    results["aspect_extraction"] = run_aspect_extraction(product_name)
+    results["cluster_score"] = run_clustering_and_scoring(product_name)
     return results
 
 

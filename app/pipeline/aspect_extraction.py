@@ -30,6 +30,25 @@ Known feature list (use ONLY these names, do not invent new ones):
 Below are {n} numbered feedback snippets. For each snippet, extract every
 feature it actually discusses. A snippet can map to 0, 1, or multiple features.
 
+IMPORTANT — common mistakes to avoid:
+1. Snippets may be in Hindi, Hinglish, or other code-mixed language. Judge
+   sentiment from the actual meaning, not surface tone — e.g. "Chain toh
+   baar baar dheeli hoti rehti hai aur nikal bhi jati hai" (the chain keeps
+   coming loose and falls off) is NEGATIVE about durability, even though
+   it's stated calmly with no angry words.
+2. A single snippet can raise MULTIPLE distinct points with DIFFERENT
+   sentiment each — extract each as its own mention with its own sentiment,
+   don't average them into one. Example: "Using it 2 years, no problem,
+   rode it on the worst roads, even fell in snow 3 times — problem in
+   bearing, but no problem other than it" is a POSITIVE mention on general
+   reliability (2 years, no issues on bad roads) PLUS a separate NEGATIVE
+   mention specifically on the bearing/suspension feature — not one
+   negative mention on an unrelated feature like belt noise.
+3. Match "feature" to what's LITERALLY named in the text — a mention of
+   "bearing" maps to a bearing/suspension-related feature, never to a
+   different component (belt, motor, brakes) just because it's the closest
+   fuzzy match in the list.
+
 For each match give:
 - feature: name, must match list exactly
 - sentiment: positive/negative/neutral
@@ -61,7 +80,7 @@ Snippets:
 """
 
 
-def run_aspect_extraction():
+def run_aspect_extraction(product_name: str | None = None):
     cfg = get_config()
     Session = get_session_factory(cfg["storage"]["db_url"])
     batch_size = cfg["pipeline"]["aspect_extraction_batch_size"]
@@ -71,11 +90,13 @@ def run_aspect_extraction():
     # sessions below: a connection idle for minutes across many slow LLM
     # calls is what Neon's serverless Postgres was killing mid-request.
     with Session() as session:
-        pending = (
+        pending_query = (
             session.query(CleanFeedback)
             .filter(CleanFeedback.is_duplicate_of.is_(None), CleanFeedback.aspect_extraction_done.is_(False))
-            .all()
         )
+        if product_name:
+            pending_query = pending_query.filter(CleanFeedback.product_name == product_name)
+        pending = pending_query.all()
     if not pending:
         return {"mentions_created": 0}
 

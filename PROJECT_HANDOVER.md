@@ -1,8 +1,8 @@
-# FeedbackForge — Project Handover
+# Customer Voice Intelligence — Project Handover
 
 ## What this is
 
-FeedbackForge turns scattered public feedback about a product into a
+Customer Voice Intelligence turns scattered public feedback about a product into a
 priority-ranked list of real issues, usable directly by R&D. Built as a PwC
 internship POC for Hero MotoCorp, currently configured for the Hero Xtreme
 125R.

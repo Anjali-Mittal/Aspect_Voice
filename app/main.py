@@ -14,7 +14,7 @@ for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
         _stream.reconfigure(encoding="utf-8", errors="replace")
 
-app = FastAPI(title="AspectVoice")
+app = FastAPI(title="Customer Voice Intelligence")
 
 _server = get_server_settings()
 app.add_middleware(

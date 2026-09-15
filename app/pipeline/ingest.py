@@ -13,17 +13,21 @@ SOURCE_FETCHERS = {
 }
 
 
-def run_ingestion():
+def run_ingestion(product_name: str | None = None):
     cfg = get_config()
     Session = get_session_factory(cfg["storage"]["db_url"])
     session = Session()
+
+    targets = cfg["targets"]
+    if product_name:
+        targets = [t for t in targets if t["product_name"] == product_name]
 
     # source_ids already committed in earlier runs — loaded once, up front,
     # so every dedup check below is an in-memory lookup, not a DB round trip
     known_ids = {row.source_id for row in session.query(RawFeedback.source_id)}
 
     inserted = 0
-    for target in cfg["targets"]:
+    for target in targets:
         for source_name, fetch_fn in SOURCE_FETCHERS.items():
             if not cfg["sources"].get(source_name, {}).get("enabled"):
                 continue

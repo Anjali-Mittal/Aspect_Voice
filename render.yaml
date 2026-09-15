@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: aspectvoice
+    name: customer-voice-intelligence
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt

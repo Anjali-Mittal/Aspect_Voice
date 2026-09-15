@@ -33,16 +33,16 @@ def _dedup_key(text: str) -> str:
     return re.sub(r"[^\w\s]", "", text.lower())
 
 
-def run_cleaning():
+def run_cleaning(product_name: str | None = None):
     cfg = get_config()
     Session = get_session_factory(cfg["storage"]["db_url"])
     session = Session()
 
     already_cleaned_raw_ids = {c.raw_feedback_id for c in session.query(CleanFeedback.raw_feedback_id)}
-    pending = [
-        r for r in session.query(RawFeedback).filter(RawFeedback.is_relevant == 1).all()
-        if r.id not in already_cleaned_raw_ids
-    ]
+    raw_query = session.query(RawFeedback).filter(RawFeedback.is_relevant == 1)
+    if product_name:
+        raw_query = raw_query.filter(RawFeedback.product_name == product_name)
+    pending = [r for r in raw_query.all() if r.id not in already_cleaned_raw_ids]
 
     # existing clean texts (per product), for fuzzy comparison against new items
     existing_by_product = {}
@@ -50,8 +50,11 @@ def run_cleaning():
         existing_by_product.setdefault(c.product_name, []).append(c)
 
     created, duplicates = 0, 0
+    print(f"[cleaning] {len(pending)} pending rows to check...", flush=True)
 
-    for raw in pending:
+    for idx, raw in enumerate(pending, start=1):
+        if idx % 100 == 0:
+            print(f"[cleaning] ...{idx}/{len(pending)} checked (+{created} clean, +{duplicates} dupes so far)", flush=True)
         clean_text = _normalize(raw.text)
         if len(clean_text) < 10:  # too short to be a real opinion, drop silently
             continue
@@ -82,4 +85,5 @@ def run_cleaning():
 
     session.commit()
     session.close()
+    print(f"[cleaning] done — {created} clean, {duplicates} duplicates", flush=True)
     return {"clean_created": created, "duplicates_marked": duplicates}

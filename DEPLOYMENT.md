@@ -25,7 +25,7 @@ Keep the NeonDB connection string and all keys handy for step 2/4.
 
 ```bash
 git clone <your-repo-url>
-cd aspectvoice
+cd customer-voice-intelligence
 
 python -m venv venv
 venv\Scripts\Activate.ps1
@@ -79,7 +79,7 @@ already:
 ```bash
 git init
 git add .
-git commit -m "AspectVoice"
+git commit -m "Customer Voice Intelligence"
 git remote add origin <your-repo-url>
 git push -u origin main
 ```
@@ -120,7 +120,7 @@ set locally and what Render assigns.
 
 ## 5. After first deploy
 
-- Render gives you a URL like `https://aspectvoice.onrender.com`
+- Render gives you a URL like `https://customer-voice-intelligence.onrender.com`
 - If you later add a frontend hosted elsewhere, set `CORS_ORIGINS` in
   Render's dashboard to that frontend's exact URL (comma-separated if more
   than one) — until then it can stay empty, which allows all origins

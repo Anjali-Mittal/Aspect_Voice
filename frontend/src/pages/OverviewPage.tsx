@@ -51,6 +51,23 @@ export function OverviewPage({ vehicle }: Props) {
     ? sentiment_trend
     : sentiment_trend.filter((p) => p.month.startsWith(selectedYear));
 
+  // Recomputed from the same points driving the chart, so these three cards
+  // always match what's plotted for the selected year. high_priority_issues
+  // stays as the backend's all-time figure — issue clusters are standing
+  // groups (their priority_score already factors in recency), not bucketed
+  // by month, so there's no per-cluster date to filter by client-side.
+  const filteredTotal = displayedTrend.reduce((sum, p) => sum + p.positive + p.neutral + p.negative, 0);
+  const filteredPositive = displayedTrend.reduce((sum, p) => sum + p.positive, 0);
+  const filteredNegative = displayedTrend.reduce((sum, p) => sum + p.negative, 0);
+  const filteredNeutral = displayedTrend.reduce((sum, p) => sum + p.neutral, 0);
+  const filteredSentiment = filteredTotal > 0
+    ? {
+      positive: Math.round((filteredPositive / filteredTotal) * 1000) / 10,
+      negative: Math.round((filteredNegative / filteredTotal) * 1000) / 10,
+      neutral: Math.round((filteredNeutral / filteredTotal) * 1000) / 10,
+    }
+    : { positive: 0, negative: 0, neutral: 0 };
+
   return (
     <div className="space-y-8">
       <div>
@@ -65,14 +82,14 @@ export function OverviewPage({ vehicle }: Props) {
       ) : (
         <>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            <KpiCard label="Feedback Analyzed" value={kpis.feedback_analyzed} />
+            <KpiCard label="Feedback Analyzed" value={filteredTotal} />
             <KpiCard
               label="Overall Sentiment"
-              value={`${kpis.sentiment_pct.positive}% positive`}
-              sublabel={`${kpis.sentiment_pct.negative}% negative · ${kpis.sentiment_pct.neutral}% neutral`}
+              value={`${filteredSentiment.positive}% positive`}
+              sublabel={`${filteredSentiment.negative}% negative · ${filteredSentiment.neutral}% neutral`}
             />
-            <KpiCard label="Negative Feedback" value={`${kpis.sentiment_pct.negative}%`} />
-            <KpiCard label="High Priority Issues" value={kpis.high_priority_issues} sublabel={`${kpis.recurring_issues} recurring issues total`} />
+            <KpiCard label="Negative Feedback" value={`${filteredSentiment.negative}%`} />
+            <KpiCard label="High Priority Issues" value={kpis.high_priority_issues} sublabel={`${kpis.recurring_issues} recurring issues total (all-time)`} />
           </div>
 
           <section>
@@ -88,7 +105,7 @@ export function OverviewPage({ vehicle }: Props) {
                     className={`rounded-md px-3 py-1 cursor-pointer transition ${selectedYear === "all"
                       ? "bg-slate-900 text-white shadow-xs"
                       : "text-slate-600 hover:text-slate-900"
-                    }`}
+                      }`}
                   >
                     All Years
                   </button>
@@ -99,7 +116,7 @@ export function OverviewPage({ vehicle }: Props) {
                       className={`rounded-md px-3 py-1 cursor-pointer transition ${selectedYear === yr
                         ? "bg-slate-900 text-white shadow-xs"
                         : "text-slate-600 hover:text-slate-900"
-                      }`}
+                        }`}
                     >
                       {yr}
                     </button>

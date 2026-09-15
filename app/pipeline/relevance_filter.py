@@ -18,25 +18,31 @@ Snippets:
 """
 
 
-def run_relevance_filter():
+def run_relevance_filter(product_name: str | None = None):
     cfg = get_config()
     Session = get_session_factory(cfg["storage"]["db_url"])
     session = Session()
     batch_size = cfg["pipeline"]["relevance_filter_batch_size"]
 
-    pending = session.query(RawFeedback).filter(RawFeedback.is_relevant.is_(None)).all()
+    query = session.query(RawFeedback).filter(RawFeedback.is_relevant.is_(None))
+    if product_name:
+        query = query.filter(RawFeedback.product_name == product_name)
+    pending = query.all()
     by_product = defaultdict(list)
     for item in pending:
         by_product[item.product_name].append(item)
 
     updated = 0
     for product_name, rows in by_product.items():
-        for i in range(0, len(rows), batch_size):
+        total_batches = (len(rows) + batch_size - 1) // batch_size
+        print(f"[relevance-filter] {product_name}: {len(rows)} rows -> {total_batches} batches", flush=True)
+        for batch_num, i in enumerate(range(0, len(rows), batch_size), start=1):
             batch = rows[i:i + batch_size]
             snippets = "\n".join(f"{j}. {item.text[:500]}" for j, item in enumerate(batch))
             prompt = PROMPT_TEMPLATE.format(
                 product_name=product_name, n=len(batch), snippets=snippets
             )
+            print(f"[relevance-filter] {product_name}: batch {batch_num}/{total_batches}...", flush=True)
             result = call_llm_json(prompt)
             for r in result.get("results", []):
                 idx = r["i"]
@@ -45,6 +51,7 @@ def run_relevance_filter():
                 batch[idx].is_relevant = 1 if (r.get("relevant") and r.get("substantive")) else 0
                 updated += 1
             session.commit()
+            print(f"[relevance-filter] {product_name}: batch {batch_num}/{total_batches} done", flush=True)
 
     session.close()
     return {"updated": updated}

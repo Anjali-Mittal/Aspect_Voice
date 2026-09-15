@@ -84,7 +84,7 @@ function App() {
           </div>
 
           <h2 className="text-xl font-semibold text-white">
-            {isWaking ? "Waking Up Backend Server..." : "Connecting to AspectVoice..."}
+            {isWaking ? "Waking Up Backend Server..." : "Connecting to Customer Voice Intelligence..."}
           </h2>
 
           <p className="mt-2 text-sm text-slate-400">

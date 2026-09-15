@@ -75,6 +75,28 @@ targets:
                                      # resolves (vs. reviews living on the base model page) —
                                      # verify before relying on volume from this source
 
+  - product_name: "Ather 450S"
+    aliases: ["Ather 450 S", "450S", "Ather 450"]
+    category: "electric scooter"
+    review_sites:
+      - name: "bikewale"
+        url: "https://www.bikewale.com/ather-bikes/450s/reviews/"
+        extraction_mode: "jsonld"
+      # bikedekho + zigwheels: no live review URL found for this model via
+      # search — pasting a guessed URL risks a silent 0-review run instead
+      # of a clear failure. Paste the correct URLs below once confirmed:
+      # - name: "bikedekho"
+      #   url: "https://www.bikedekho.com/ather/450s/reviews"
+      #   extraction_mode: "jsonld"
+      # - name: "zigwheels"
+      #   url: "https://www.zigwheels.com/user-reviews/ather/450s"
+      #   extraction_mode: "css"
+      #   review_container_selector: "div.ncmt-c.fl-wf.clr.bdr-b"
+      #   text_selector: "[class^='ar-text-']"
+      #   author_selector: "span.nw-profileName"
+      #   max_pages: 1
+      #   delay_seconds: 2
+
 sources:
   reddit:
     enabled: true

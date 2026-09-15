@@ -32,7 +32,7 @@ def fetch_reddit_feedback(target: dict):
     reddit = praw.Reddit(
         client_id=client_id,
         client_secret=client_secret,
-        user_agent=user_agent or "aspectvoice/0.1",
+        user_agent=user_agent or "customer-voice-intelligence/0.1",
     )
 
     items = []

@@ -1,4 +1,4 @@
-# AspectVoice — Dashboard Specification
+# Customer Voice Intelligence — Dashboard Specification
 
 ## 1. Product Dashboard Philosophy
 
@@ -9,7 +9,7 @@ The backend may contain independent modules for ingestion, feature discovery, as
 The recommended structure is:
 
 ```text
-AspectVoice
+Customer Voice Intelligence
 |
 +-- Product Overview
 |
@@ -508,7 +508,7 @@ Competitive intelligence is a Phase 2 capability and should not block the core P
 Recommended navigation:
 
 ```text
-AspectVoice
+Customer Voice Intelligence
 |
 +-- Overview
 |

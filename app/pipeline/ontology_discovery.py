@@ -41,14 +41,17 @@ def _discover_from_batch(batch, product_name: str) -> list[dict]:
     return result.get("features", [])
 
 
-def run_ontology_discovery():
+def run_ontology_discovery(product_name: str | None = None):
     cfg = get_config()
     Session = get_session_factory(cfg["storage"]["db_url"])
     session = Session()
     sample_size = cfg["pipeline"]["ontology_discovery_sample_size"]
     batch_size = cfg["pipeline"]["ontology_discovery_batch_size"]
 
-    clean = session.query(CleanFeedback).filter(CleanFeedback.is_duplicate_of.is_(None)).all()
+    clean_query = session.query(CleanFeedback).filter(CleanFeedback.is_duplicate_of.is_(None))
+    if product_name:
+        clean_query = clean_query.filter(CleanFeedback.product_name == product_name)
+    clean = clean_query.all()
     if not clean:
         session.close()
         return {"features": 0, "note": "no clean feedback yet, run ingestion + relevance_filter + cleaning first"}
@@ -65,15 +68,18 @@ def run_ontology_discovery():
         # a 300-item sample in one call would be ~30k tokens; capped at batch_size
         # per call instead (default 50 -> ~5k tokens).
         batches = [sample[i:i + batch_size] for i in range(0, len(sample), batch_size)]
+        print(f"[ontology-discovery] {product_name}: {len(rows)} clean rows, sampled {len(sample)} -> {len(batches)} batches", flush=True)
 
         candidates: list[dict] = []
-        for batch in batches:
+        for batch_num, batch in enumerate(batches, start=1):
+            print(f"[ontology-discovery] {product_name}: batch {batch_num}/{len(batches)}...", flush=True)
             candidates.extend(_discover_from_batch(batch, product_name))
 
         if len(batches) > 1:
             # merge/dedupe across batches — this call only sees short names +
             # descriptions, never the original feedback text, so it stays cheap
             # even with hundreds of candidates
+            print(f"[ontology-discovery] {product_name}: merging {len(candidates)} candidates across batches...", flush=True)
             candidate_lines = "\n".join(f"- {c['name']}: {c.get('description', '')}" for c in candidates)
             merge_result = call_llm_json(MERGE_PROMPT.format(candidates=candidate_lines))
             final_features = merge_result.get("features", [])
@@ -89,6 +95,7 @@ def run_ontology_discovery():
                 description=f.get("description", ""),
             ))
         session.commit()
+        print(f"[ontology-discovery] {product_name} done — {len(final_features)} features", flush=True)
         results[product_name] = {"features": len(final_features), "batches_processed": len(batches)}
 
     session.close()

@@ -90,7 +90,7 @@ def _compute_confidence(mention_count: int) -> float:
     return round(min(mention_count / 15, 1.0), 2)
 
 
-def run_clustering_and_scoring():
+def run_clustering_and_scoring(product_name: str | None = None):
     cfg = get_config()
     Session = get_session_factory(cfg["storage"]["db_url"])
     window_days = cfg["pipeline"]["trend_window_days"]
@@ -101,12 +101,15 @@ def run_clustering_and_scoring():
     # multi-feature, multi-LLM-call run is what Neon's serverless Postgres
     # was killing mid-request.
     with Session() as session:
-        negatives = (
+        negatives_query = (
             session.query(AspectMention)
+            .join(CleanFeedback, AspectMention.clean_feedback_id == CleanFeedback.id)
             .filter(AspectMention.sentiment == "negative")
             .options(joinedload(AspectMention.clean_feedback))  # loaded upfront — session closes right after this block, and clean_feedback is read later (trend calc, snippets) after that
-            .all()
         )
+        if product_name:
+            negatives_query = negatives_query.filter(CleanFeedback.product_name == product_name)
+        negatives = negatives_query.all()
         already_clustered_ids = {
             row[0] for row in session.query(IssueClusterMember.aspect_mention_id).all()
         }
