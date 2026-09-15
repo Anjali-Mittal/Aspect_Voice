@@ -33,7 +33,7 @@ export function AppShell({
       <header className="border-b border-slate-200 bg-white">
         <div className={`mx-auto flex items-center justify-between px-6 py-4 ${isCompetitor ? "max-w-[1500px]" : "max-w-6xl"}`}>
           <div className="flex items-center gap-8">
-            <span className="text-lg font-semibold tracking-tight text-slate-900">Customer Voice Intelligence</span>
+            <span className="-ml-2 text-lg font-semibold tracking-tight text-slate-900">Customer Voice Intelligence</span>
             <nav className="flex gap-6 text-sm font-medium text-slate-500">
               <button
                 onClick={() => onNavigate("overview")}
