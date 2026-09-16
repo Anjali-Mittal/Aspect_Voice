@@ -187,3 +187,22 @@ export async function fetchFeatureSummary(feature: string, vehicle: string): Pro
   });
   return data;
 }
+
+export interface AiSummaryPieSlice {
+  feature: string;
+  mentions: number;
+}
+
+export interface AiSummaryResponse {
+  vehicle: string;
+  pie: AiSummaryPieSlice[];
+  narrative: string | null;
+  high_priority_count?: number;
+  suggestions: string[];
+  note?: string;
+}
+
+export async function fetchAiSummary(vehicle: string): Promise<AiSummaryResponse> {
+  const { data } = await api.get<AiSummaryResponse>("/insights/ai-summary", { params: { vehicle } });
+  return data;
+}

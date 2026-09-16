@@ -13,11 +13,17 @@ from app.models.db import (
     IssueCluster, IssueClusterMember, AspectMention, CleanFeedback,
     FeatureOntology, RawFeedback, get_session_factory,
 )
+from app.llm.client import call_llm_json, LLMError
 
 router = APIRouter(tags=["insights"])
 
 # In-memory storage for positive and neutral grouped clusters
 _VIRTUAL_CLUSTERS: dict[int, dict] = {}
+
+# Cache of the last AI-generated summary per vehicle, so re-opening the
+# Overview page doesn't re-spend an LLM call — invalidated whenever the
+# underlying issue-cluster count changes (a cheap proxy for "pipeline reran").
+_AI_SUMMARY_CACHE: dict[str, dict] = {}
 
 
 def _session():
@@ -589,3 +595,106 @@ def stats(vehicle: str = Query(...)):
         "aspect_mentions": mentions,
         "issue_clusters": clusters,
     }
+
+
+@router.get("/insights/ai-summary")
+def ai_summary(vehicle: str = Query(...)):
+    """Gen-AI layer for the Overview page: a pie-chart breakdown of real
+    issue-cluster mention counts by feature (numbers computed here, not by
+    the LLM — see DASHBOARD.md section 12: frontend/LLM never invents
+    analytical numbers), plus one LLM-written paragraph naming the actual
+    top issue and 3-4 concrete suggestions grounded in that same data.
+    Cached per vehicle until the issue-cluster count changes, so switching
+    tabs doesn't re-spend an LLM call."""
+    session, cfg = _session()
+    high_priority_threshold = cfg["pipeline"]["high_priority_threshold"]
+
+    issues = (
+        session.query(IssueCluster)
+        .filter_by(product_name=vehicle)
+        .order_by(IssueCluster.priority_score.desc())
+        .all()
+    )
+    session.close()
+
+    if not issues:
+        return {
+            "vehicle": vehicle,
+            "pie": [],
+            "narrative": None,
+            "suggestions": [],
+            "note": "No issue clusters yet — run the pipeline to get AI insights.",
+        }
+
+    cache_key = vehicle
+    cached = _AI_SUMMARY_CACHE.get(cache_key)
+    if cached and cached["cluster_count"] == len(issues):
+        return cached["payload"]
+
+    # Pie slice per feature = sum of real mention_count across that
+    # feature's clusters. Top 5 features + one "Other" slice so the chart
+    # stays readable regardless of how many distinct issues exist.
+    by_feature: dict[str, int] = defaultdict(int)
+    for i in issues:
+        by_feature[i.feature_name] += i.mention_count or 0
+    ranked = sorted(by_feature.items(), key=lambda kv: kv[1], reverse=True)
+    top5, rest = ranked[:5], ranked[5:]
+    pie = [{"feature": f, "mentions": c} for f, c in top5]
+    if rest:
+        pie.append({"feature": "Other", "mentions": sum(c for _, c in rest)})
+
+    high_priority = [i for i in issues if (i.priority_score or 0) >= high_priority_threshold]
+    top_issues_for_prompt = [
+        {
+            "feature": i.feature_name,
+            "issue": i.issue_summary,
+            "mentions": i.mention_count,
+            "trend": i.trend,
+            "safety_related": i.safety_related,
+        }
+        for i in issues[:8]
+    ]
+
+    prompt = (
+        f"Vehicle: {vehicle}\n"
+        f"Top real customer issues (already ranked by priority, real mention counts, do not invent numbers):\n"
+        f"{top_issues_for_prompt}\n\n"
+        "Write:\n"
+        "1. \"narrative\": one short paragraph (2-3 sentences) in plain English telling a product "
+        "manager what the single biggest issue actually is, referencing the real feature name and "
+        "mention count from the data above.\n"
+        "2. \"suggestions\": a list of exactly 3 to 4 short, concrete, actionable suggestions "
+        "(each under 20 words) for the product/R&D team, grounded only in the issues listed above — "
+        "no invented features or numbers.\n"
+        "Return JSON: {\"narrative\": string, \"suggestions\": [string, ...]}"
+    )
+    try:
+        result = call_llm_json(
+            prompt,
+            system=(
+                "You are a product-intelligence analyst. Use only the data given. "
+                "Never invent features, numbers, or issues not present in the input. "
+                "Output ONLY valid JSON, no markdown fences, no commentary."
+            ),
+        )
+        narrative = result.get("narrative")
+        suggestions = [s for s in (result.get("suggestions") or []) if s][:4]
+    except LLMError:
+        # Fall back to a data-only narrative — pie chart and real numbers
+        # still render even if the LLM layer is unavailable.
+        top = issues[0]
+        narrative = (
+            f"The most significant issue is {top.feature_name}: {top.issue_summary} "
+            f"({top.mention_count} mentions)."
+        )
+        suggestions = []
+
+    payload = {
+        "vehicle": vehicle,
+        "pie": pie,
+        "narrative": narrative,
+        "high_priority_count": len(high_priority),
+        "suggestions": suggestions,
+    }
+    _AI_SUMMARY_CACHE[cache_key] = {"cluster_count": len(issues), "payload": payload}
+    return payload

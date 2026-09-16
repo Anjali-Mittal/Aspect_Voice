@@ -7,6 +7,7 @@ import { KpiCard } from "../components/KpiCard";
 import { EmptyState } from "../components/EmptyState";
 import { TrendBadge } from "../components/TrendBadge";
 import { MonthReviewsDrawer } from "../components/MonthReviewsDrawer";
+import { AiInsightsPanel } from "../components/AiInsightsPanel";
 
 interface Props {
   vehicle: string;
@@ -181,6 +182,8 @@ export function OverviewPage({ vehicle }: Props) {
               </div>
             )}
           </section>
+
+          <AiInsightsPanel vehicle={vehicle} />
 
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <section>
