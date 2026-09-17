@@ -87,16 +87,16 @@ function VehicleAiBlock({ vehicle, data }: { vehicle: string; data: AiSummaryRes
                     )}
 
                     <div className="mt-3 text-xs font-medium uppercase tracking-wide text-slate-500">What the issue is</div>
-                    <p className="mt-1 text-sm leading-relaxed text-slate-700">
+                    <p className="mt-1 text-sm leading-relaxed text-slate-800">
                         {selected?.narrative || "No narrative available."}
                     </p>
 
                     {selected && selected.suggestions.length > 0 && (
                         <div className="mt-3">
                             <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Suggestions</div>
-                            <ul className="space-y-1.5">
+                            <ul className="space-y-2">
                                 {selected.suggestions.map((s, i) => (
-                                    <li key={i} className="flex items-start gap-2 rounded-lg bg-indigo-50/60 px-2.5 py-1.5 text-xs text-slate-700">
+                                    <li key={i} className="flex items-start gap-2 rounded-lg bg-indigo-50 px-3 py-2 text-base leading-snug text-slate-800">
                                         <span className="mt-0.5 text-indigo-500">•</span>
                                         <span>{s}</span>
                                     </li>
