@@ -6,6 +6,7 @@ import { MethodologyTooltip } from "../components/MethodologyTooltip";
 import { EmptyState } from "../components/EmptyState";
 import { TrendBadge } from "../components/TrendBadge";
 import { MonthReviewsPanel } from "../components/MonthReviewsDrawer";
+import { CompareAiInsightsPanel } from "../components/CompareAiInsightsPanel";
 
 interface Props {
     vehicleA: string;
@@ -282,7 +283,7 @@ export function CompareOverviewPage({ vehicleA, vehicleB }: Props) {
                                             className={`rounded-md px-3 py-1 cursor-pointer transition ${selectedYear === "all"
                                                 ? "bg-slate-900 text-white shadow-xs"
                                                 : "text-slate-600 hover:text-slate-900"
-                                            }`}
+                                                }`}
                                         >
                                             All Years
                                         </button>
@@ -293,7 +294,7 @@ export function CompareOverviewPage({ vehicleA, vehicleB }: Props) {
                                                 className={`rounded-md px-3 py-1 cursor-pointer transition ${selectedYear === yr
                                                     ? "bg-slate-900 text-white shadow-xs"
                                                     : "text-slate-600 hover:text-slate-900"
-                                                }`}
+                                                    }`}
                                             >
                                                 {yr}
                                             </button>
@@ -346,6 +347,8 @@ export function CompareOverviewPage({ vehicleA, vehicleB }: Props) {
                             </div>
                         )}
                     </section>
+
+                    <CompareAiInsightsPanel vehicleA={vehicleA} vehicleB={vehicleB} />
 
                     <section>
                         <div className="mb-3 flex items-center gap-4">
