@@ -17,11 +17,13 @@ export function AiInsightsPanel({ vehicle }: Props) {
     const [data, setData] = useState<AiSummaryResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [selectedIdx, setSelectedIdx] = useState(0);
 
     useEffect(() => {
         if (!vehicle) return;
         setLoading(true);
         setError(null);
+        setSelectedIdx(0);
         fetchAiSummary(vehicle)
             .then(setData)
             .catch(() => setError("Could not load AI insights."))
@@ -49,15 +51,12 @@ export function AiInsightsPanel({ vehicle }: Props) {
     }
 
     const maxMentions = Math.max(...data.pie.map((s) => s.mentions));
+    const issues = data.issues || [];
+    const selected = issues[selectedIdx] ?? issues[0];
 
     return (
         <section>
-            <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
-                AI Insights
-                <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-indigo-600">
-                    Gen AI
-                </span>
-            </h2>
+            <h2 className="mb-3 text-sm font-semibold text-slate-700">AI Insights</h2>
             <div className="grid grid-cols-1 gap-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm md:grid-cols-2">
                 <div className="flex flex-col justify-center">
                     <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -104,22 +103,39 @@ export function AiInsightsPanel({ vehicle }: Props) {
                 </div>
 
                 <div className="flex h-full flex-col">
+                    {issues.length > 1 && (
+                        <div className="mb-3 flex flex-wrap gap-1.5">
+                            {issues.map((iss, i) => (
+                                <button
+                                    key={iss.feature}
+                                    onClick={() => setSelectedIdx(i)}
+                                    className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition ${i === selectedIdx
+                                            ? "bg-slate-900 text-white"
+                                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                                        }`}
+                                >
+                                    {i + 1}. {iss.feature}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
                     <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
                         What the issue is
                     </div>
-                    {data.narrative ? (
-                        <p className="text-sm leading-relaxed text-slate-700">{data.narrative}</p>
+                    {selected?.narrative ? (
+                        <p className="text-sm leading-relaxed text-slate-700">{selected.narrative}</p>
                     ) : (
                         <p className="text-sm text-slate-400">No narrative available.</p>
                     )}
 
-                    {data.suggestions.length > 0 && (
+                    {selected && selected.suggestions.length > 0 && (
                         <div className="mt-4 flex flex-1 flex-col">
                             <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
                                 Suggestions
                             </div>
                             <ul className="flex flex-1 flex-col justify-between gap-2">
-                                {data.suggestions.map((s, i) => (
+                                {selected.suggestions.map((s, i) => (
                                     <li
                                         key={i}
                                         className="flex items-start gap-2 rounded-lg bg-indigo-50/60 px-3 py-2 text-sm text-slate-700"

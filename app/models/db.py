@@ -114,6 +114,25 @@ class PipelineRunLog(Base):
     results = Column(JSON, default={})
 
 
+class AiSummaryCache(Base):
+    """Cached Gen-AI layer output for the Overview page (pie data + one
+    narrative+suggestions set per top-5 issue) — one row per vehicle.
+    Persisted so the cache survives process restarts and is shared across
+    workers, unlike an in-memory dict. cluster_count is the invalidation
+    key: whenever it no longer matches the vehicle's current IssueCluster
+    count (i.e. the pipeline reran and clustering changed), the row is
+    stale and gets recomputed and overwritten — see ai_summary() in
+    insights_routes.py."""
+    __tablename__ = "ai_summary_cache"
+    id = Column(Integer, primary_key=True)
+    product_name = Column(String, nullable=False, unique=True)
+    cluster_count = Column(Integer, nullable=False)
+    pie = Column(JSON, default=[])
+    issues = Column(JSON, default=[])  # list of {feature, issue_summary, mention_count, narrative, suggestions}
+    high_priority_count = Column(Integer, default=0)
+    computed_at = Column(DateTime, default=datetime.utcnow)
+
+
 @lru_cache
 def get_engine(db_url: str):
     # lru_cache -> one shared connection pool per process, not one per module/call.

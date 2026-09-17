@@ -193,12 +193,20 @@ export interface AiSummaryPieSlice {
   mentions: number;
 }
 
+export interface AiSummaryIssue {
+  feature: string;
+  issue_summary: string;
+  mention_count: number;
+  safety_related: boolean;
+  narrative: string | null;
+  suggestions: string[];
+}
+
 export interface AiSummaryResponse {
   vehicle: string;
   pie: AiSummaryPieSlice[];
-  narrative: string | null;
+  issues: AiSummaryIssue[];
   high_priority_count?: number;
-  suggestions: string[];
   note?: string;
 }
 

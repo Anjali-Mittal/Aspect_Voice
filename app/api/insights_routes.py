@@ -7,11 +7,12 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Query
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 from app.config import get_config
 from app.models.db import (
     IssueCluster, IssueClusterMember, AspectMention, CleanFeedback,
-    FeatureOntology, RawFeedback, get_session_factory,
+    FeatureOntology, RawFeedback, AiSummaryCache, get_session_factory,
 )
 from app.llm.client import call_llm_json, LLMError
 
@@ -19,11 +20,6 @@ router = APIRouter(tags=["insights"])
 
 # In-memory storage for positive and neutral grouped clusters
 _VIRTUAL_CLUSTERS: dict[int, dict] = {}
-
-# Cache of the last AI-generated summary per vehicle, so re-opening the
-# Overview page doesn't re-spend an LLM call — invalidated whenever the
-# underlying issue-cluster count changes (a cheap proxy for "pipeline reran").
-_AI_SUMMARY_CACHE: dict[str, dict] = {}
 
 
 def _session():
@@ -602,10 +598,13 @@ def ai_summary(vehicle: str = Query(...)):
     """Gen-AI layer for the Overview page: a pie-chart breakdown of real
     issue-cluster mention counts by feature (numbers computed here, not by
     the LLM — see DASHBOARD.md section 12: frontend/LLM never invents
-    analytical numbers), plus one LLM-written paragraph naming the actual
-    top issue and 3-4 concrete suggestions grounded in that same data.
-    Cached per vehicle until the issue-cluster count changes, so switching
-    tabs doesn't re-spend an LLM call."""
+    analytical numbers), plus one LLM-written narrative + 3-4 suggestions
+    PER top-5 issue cluster (by priority_score), each grounded in the
+    actual verbatim review snippets for that cluster — not just the
+    cluster's own summary field. Persisted in ai_summary_cache (one row
+    per vehicle) so the result survives restarts and is shared across
+    workers. Recomputed only when cluster_count no longer matches the
+    vehicle's current IssueCluster count, i.e. the pipeline reran."""
     session, cfg = _session()
     high_priority_threshold = cfg["pipeline"]["high_priority_threshold"]
 
@@ -615,21 +614,26 @@ def ai_summary(vehicle: str = Query(...)):
         .order_by(IssueCluster.priority_score.desc())
         .all()
     )
-    session.close()
 
     if not issues:
+        session.close()
         return {
             "vehicle": vehicle,
             "pie": [],
-            "narrative": None,
-            "suggestions": [],
+            "issues": [],
             "note": "No issue clusters yet — run the pipeline to get AI insights.",
         }
 
-    cache_key = vehicle
-    cached = _AI_SUMMARY_CACHE.get(cache_key)
-    if cached and cached["cluster_count"] == len(issues):
-        return cached["payload"]
+    cached = session.query(AiSummaryCache).filter_by(product_name=vehicle).first()
+    if cached and cached.cluster_count == len(issues):
+        payload = {
+            "vehicle": vehicle,
+            "pie": cached.pie,
+            "issues": cached.issues,
+            "high_priority_count": cached.high_priority_count,
+        }
+        session.close()
+        return payload
 
     # Pie slice per feature = sum of real mention_count across that
     # feature's clusters. Top 5 features + one "Other" slice so the chart
@@ -638,63 +642,114 @@ def ai_summary(vehicle: str = Query(...)):
     for i in issues:
         by_feature[i.feature_name] += i.mention_count or 0
     ranked = sorted(by_feature.items(), key=lambda kv: kv[1], reverse=True)
-    top5, rest = ranked[:5], ranked[5:]
-    pie = [{"feature": f, "mentions": c} for f, c in top5]
+    top5_features, rest = ranked[:5], ranked[5:]
+    pie = [{"feature": f, "mentions": c} for f, c in top5_features]
     if rest:
         pie.append({"feature": "Other", "mentions": sum(c for _, c in rest)})
 
     high_priority = [i for i in issues if (i.priority_score or 0) >= high_priority_threshold]
-    top_issues_for_prompt = [
-        {
-            "feature": i.feature_name,
-            "issue": i.issue_summary,
-            "mentions": i.mention_count,
-            "trend": i.trend,
-            "safety_related": i.safety_related,
-        }
-        for i in issues[:8]
-    ]
 
-    prompt = (
-        f"Vehicle: {vehicle}\n"
-        f"Top real customer issues (already ranked by priority, real mention counts, do not invent numbers):\n"
-        f"{top_issues_for_prompt}\n\n"
-        "Write:\n"
-        "1. \"narrative\": one short paragraph (2-3 sentences) in plain English telling a product "
-        "manager what the single biggest issue actually is, referencing the real feature name and "
-        "mention count from the data above.\n"
-        "2. \"suggestions\": a list of exactly 3 to 4 short, concrete, actionable suggestions "
-        "(each under 20 words) for the product/R&D team, grounded only in the issues listed above — "
-        "no invented features or numbers.\n"
-        "Return JSON: {\"narrative\": string, \"suggestions\": [string, ...]}"
+    # Top 5 issue clusters by priority — these get their own LLM-written
+    # narrative + suggestions, each grounded in that cluster's actual
+    # member review snippets (fetched below), not just its summary field.
+    top5_issues = issues[:5]
+    cluster_ids = [i.id for i in top5_issues]
+    rows = (
+        session.query(IssueClusterMember.issue_cluster_id, AspectMention.snippet)
+        .join(AspectMention, IssueClusterMember.aspect_mention_id == AspectMention.id)
+        .filter(IssueClusterMember.issue_cluster_id.in_(cluster_ids))
+        .all()
     )
-    try:
-        result = call_llm_json(
-            prompt,
-            system=(
-                "You are a product-intelligence analyst. Use only the data given. "
-                "Never invent features, numbers, or issues not present in the input. "
-                "Output ONLY valid JSON, no markdown fences, no commentary."
-            ),
-        )
-        narrative = result.get("narrative")
-        suggestions = [s for s in (result.get("suggestions") or []) if s][:4]
-    except LLMError:
-        # Fall back to a data-only narrative — pie chart and real numbers
-        # still render even if the LLM layer is unavailable.
-        top = issues[0]
-        narrative = (
-            f"The most significant issue is {top.feature_name}: {top.issue_summary} "
-            f"({top.mention_count} mentions)."
-        )
-        suggestions = []
+    snippets_by_cluster: dict[int, list[str]] = defaultdict(list)
+    for cluster_id, snippet in rows:
+        if snippet:
+            snippets_by_cluster[cluster_id].append(snippet)
 
-    payload = {
+    issues_payload = []
+    for issue in top5_issues:
+        # Cap and truncate to keep the prompt bounded regardless of how
+        # many hundreds of reviews back a popular issue.
+        review_snippets = snippets_by_cluster.get(issue.id, [])[:40]
+        review_snippets = [s[:300] for s in review_snippets]
+
+        prompt = (
+            f"Vehicle: {vehicle}\n"
+            f"Feature/issue: {issue.feature_name}\n"
+            f"Cluster summary: {issue.issue_summary}\n"
+            f"Total mentions: {issue.mention_count}, trend: {issue.trend}, "
+            f"safety related: {issue.safety_related}\n\n"
+            f"Actual customer review snippets for this issue ({len(review_snippets)} of "
+            f"{issue.mention_count} total mentions):\n"
+            + "\n".join(f"- {s}" for s in review_snippets) +
+            "\n\nRead through these real reviews yourself and write:\n"
+            "1. \"narrative\": one short paragraph (2-3 sentences) in plain English telling a "
+            "product manager what this issue actually is, based on what customers are really "
+            "describing in the snippets above — not just the cluster summary line.\n"
+            "2. \"suggestions\": exactly 3 to 4 short, concrete, actionable suggestions (each under "
+            "20 words) for the product/R&D team, grounded only in what the review snippets above "
+            "actually describe — no invented details or numbers.\n"
+            "Return JSON: {\"narrative\": string, \"suggestions\": [string, ...]}"
+        )
+        try:
+            result = call_llm_json(
+                prompt,
+                system=(
+                    "You are a product-intelligence analyst. Base your answer on the actual "
+                    "customer review snippets given, not assumptions. Never invent features, "
+                    "numbers, or issues not present in the input. Output ONLY valid JSON, no "
+                    "markdown fences, no commentary."
+                ),
+            )
+            narrative = result.get("narrative")
+            suggestions = [s for s in (result.get("suggestions") or []) if s][:4]
+        except LLMError:
+            narrative = f"{issue.feature_name}: {issue.issue_summary} ({issue.mention_count} mentions)."
+            suggestions = []
+
+        issues_payload.append({
+            "feature": issue.feature_name,
+            "issue_summary": issue.issue_summary,
+            "mention_count": issue.mention_count,
+            "safety_related": issue.safety_related,
+            "narrative": narrative,
+            "suggestions": suggestions,
+        })
+
+    if cached:
+        cached.cluster_count = len(issues)
+        cached.pie = pie
+        cached.issues = issues_payload
+        cached.high_priority_count = len(high_priority)
+        cached.computed_at = datetime.utcnow()
+        session.commit()
+    else:
+        session.add(AiSummaryCache(
+            product_name=vehicle,
+            cluster_count=len(issues),
+            pie=pie,
+            issues=issues_payload,
+            high_priority_count=len(high_priority),
+        ))
+        try:
+            session.commit()
+        except IntegrityError:
+            # Two concurrent requests both missed the cache and both tried
+            # to insert — the other one won the race. Roll back our failed
+            # insert and update its row instead of erroring out.
+            session.rollback()
+            existing = session.query(AiSummaryCache).filter_by(product_name=vehicle).first()
+            if existing:
+                existing.cluster_count = len(issues)
+                existing.pie = pie
+                existing.issues = issues_payload
+                existing.high_priority_count = len(high_priority)
+                existing.computed_at = datetime.utcnow()
+                session.commit()
+    session.close()
+
+    return {
         "vehicle": vehicle,
         "pie": pie,
-        "narrative": narrative,
+        "issues": issues_payload,
         "high_priority_count": len(high_priority),
-        "suggestions": suggestions,
     }
-    _AI_SUMMARY_CACHE[cache_key] = {"cluster_count": len(issues), "payload": payload}
-    return payload
