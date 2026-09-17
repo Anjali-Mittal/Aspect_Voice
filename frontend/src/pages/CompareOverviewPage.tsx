@@ -263,6 +263,8 @@ export function CompareOverviewPage({ vehicleA, vehicleB }: Props) {
                         />
                     </div>
 
+                    <CompareAiInsightsPanel vehicleA={vehicleA} vehicleB={vehicleB} />
+
                     <section>
                         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                             <div>
@@ -347,8 +349,6 @@ export function CompareOverviewPage({ vehicleA, vehicleB }: Props) {
                             </div>
                         )}
                     </section>
-
-                    <CompareAiInsightsPanel vehicleA={vehicleA} vehicleB={vehicleB} />
 
                     <section>
                         <div className="mb-3 flex items-center gap-4">

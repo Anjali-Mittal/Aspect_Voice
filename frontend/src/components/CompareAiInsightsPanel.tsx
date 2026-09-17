@@ -96,7 +96,7 @@ function VehicleAiBlock({ vehicle, data }: { vehicle: string; data: AiSummaryRes
                             <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Suggestions</div>
                             <ul className="space-y-2">
                                 {selected.suggestions.map((s, i) => (
-                                    <li key={i} className="flex items-start gap-2 rounded-lg bg-indigo-50 px-3 py-2 text-base leading-snug text-slate-800">
+                                    <li key={i} className="flex items-start gap-2 rounded-lg bg-indigo-50 px-3 py-2 text-sm leading-snug text-slate-800">
                                         <span className="mt-0.5 text-indigo-500">•</span>
                                         <span>{s}</span>
                                     </li>
