@@ -125,8 +125,7 @@ set locally and what Render assigns.
   Render's dashboard to that frontend's exact URL (comma-separated if more
   than one) — until then it can stay empty, which allows all origins
 - Free tier spins down after inactivity; first request after idle takes
-  ~30–50s to wake up. This is a Render free-tier characteristic, not a bug
-  in the app
+  ~30–50s to wake up. To prevent this, a GitHub Actions workflow `.github/workflows/keep_alive.yml` is included to ping `/health` every 10 minutes.
 - Trigger the pipeline the same way as local: `POST /pipeline/run-all` on
   your Render URL instead of `localhost`
 

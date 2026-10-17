@@ -5,7 +5,7 @@ path back to real rows).
 """
 from collections import defaultdict
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
@@ -593,19 +593,7 @@ def stats(vehicle: str = Query(...)):
     }
 
 
-@router.get("/insights/ai-summary")
-def ai_summary(vehicle: str = Query(...)):
-    """Gen-AI layer for the Overview page: a pie-chart breakdown of real
-    issue-cluster mention counts by feature (numbers computed here, not by
-    the LLM — see DASHBOARD.md section 12: frontend/LLM never invents
-    analytical numbers), plus one LLM-written narrative + 3-4 suggestions
-    PER top-5 issue cluster (by priority_score), each grounded in the
-    actual verbatim review snippets for that cluster — not just the
-    cluster's own summary field. Persisted in ai_summary_cache (one row
-    per vehicle) so the result survives restarts and is shared across
-    workers. Recomputed only when cluster_count no longer matches the
-    vehicle's current IssueCluster count, i.e. the pipeline reran."""
-    session, cfg = _session()
+def _generate_ai_summary(session, cfg: dict, vehicle: str, force_reload: bool = False) -> dict:
     high_priority_threshold = cfg["pipeline"]["high_priority_threshold"]
 
     issues = (
@@ -616,7 +604,6 @@ def ai_summary(vehicle: str = Query(...)):
     )
 
     if not issues:
-        session.close()
         return {
             "vehicle": vehicle,
             "pie": [],
@@ -625,15 +612,13 @@ def ai_summary(vehicle: str = Query(...)):
         }
 
     cached = session.query(AiSummaryCache).filter_by(product_name=vehicle).first()
-    if cached and cached.cluster_count == len(issues):
-        payload = {
+    if not force_reload and cached and cached.cluster_count == len(issues):
+        return {
             "vehicle": vehicle,
             "pie": cached.pie,
             "issues": cached.issues,
             "high_priority_count": cached.high_priority_count,
         }
-        session.close()
-        return payload
 
     # Pie slice per feature = sum of real mention_count across that
     # feature's clusters. Top 5 features + one "Other" slice so the chart
@@ -715,37 +700,37 @@ def ai_summary(vehicle: str = Query(...)):
             "suggestions": suggestions,
         })
 
-    if cached:
-        cached.cluster_count = len(issues)
-        cached.pie = pie
-        cached.issues = issues_payload
-        cached.high_priority_count = len(high_priority)
-        cached.computed_at = datetime.utcnow()
-        session.commit()
-    else:
-        session.add(AiSummaryCache(
-            product_name=vehicle,
-            cluster_count=len(issues),
-            pie=pie,
-            issues=issues_payload,
-            high_priority_count=len(high_priority),
-        ))
-        try:
+    try:
+        cached = session.query(AiSummaryCache).filter_by(product_name=vehicle).first()
+        if cached:
+            cached.cluster_count = len(issues)
+            cached.pie = pie
+            cached.issues = issues_payload
+            cached.high_priority_count = len(high_priority)
+            cached.computed_at = datetime.utcnow()
             session.commit()
-        except IntegrityError:
-            # Two concurrent requests both missed the cache and both tried
-            # to insert — the other one won the race. Roll back our failed
-            # insert and update its row instead of erroring out.
-            session.rollback()
-            existing = session.query(AiSummaryCache).filter_by(product_name=vehicle).first()
-            if existing:
-                existing.cluster_count = len(issues)
-                existing.pie = pie
-                existing.issues = issues_payload
-                existing.high_priority_count = len(high_priority)
-                existing.computed_at = datetime.utcnow()
-                session.commit()
-    session.close()
+        else:
+            session.add(AiSummaryCache(
+                product_name=vehicle,
+                cluster_count=len(issues),
+                pie=pie,
+                issues=issues_payload,
+                high_priority_count=len(high_priority),
+            ))
+            session.commit()
+    except IntegrityError:
+        # Two concurrent requests both missed the cache and both tried
+        # to insert — the other one won the race. Roll back our failed
+        # insert and update its row instead of erroring out.
+        session.rollback()
+        existing = session.query(AiSummaryCache).filter_by(product_name=vehicle).first()
+        if existing:
+            existing.cluster_count = len(issues)
+            existing.pie = pie
+            existing.issues = issues_payload
+            existing.high_priority_count = len(high_priority)
+            existing.computed_at = datetime.utcnow()
+            session.commit()
 
     return {
         "vehicle": vehicle,
@@ -753,3 +738,68 @@ def ai_summary(vehicle: str = Query(...)):
         "issues": issues_payload,
         "high_priority_count": len(high_priority),
     }
+
+
+@router.get("/insights/ai-summary")
+def ai_summary(vehicle: str = Query(...), reload: bool = Query(default=False)):
+    """Gen-AI layer for the Overview page: a pie-chart breakdown of real
+    issue-cluster mention counts by feature (numbers computed here, not by
+    the LLM — see DASHBOARD.md section 12: frontend/LLM never invents
+    analytical numbers), plus one LLM-written narrative + 3-4 suggestions
+    PER top-5 issue cluster (by priority_score), each grounded in the
+    actual verbatim review snippets for that cluster — not just the
+    cluster's own summary field. Persisted in ai_summary_cache (one row
+    per vehicle) so the result survives restarts and is shared across
+    workers. Recomputed when cluster_count no longer matches the
+    vehicle's current IssueCluster count, or when reload=True."""
+    session, cfg = _session()
+    try:
+        return _generate_ai_summary(session, cfg, vehicle, force_reload=reload)
+    finally:
+        session.close()
+
+
+@router.post("/insights/ai-summary/reload")
+@router.get("/insights/ai-summary/reload")
+@router.post("/insights/ai-reload")
+@router.get("/insights/ai-reload")
+@router.post("/insights/reload")
+async def reload_ai_summary(
+    request: Request,
+    vehicle: str | None = Query(default=None, description="Vehicle name. If omitted, reloads for all vehicles."),
+):
+    """Force reloads/regenerates AI insights and refreshes the cache.
+    Accepts vehicle as a query parameter or JSON body {"vehicle": "..."}.
+    If vehicle is omitted, reloads AI insights for all vehicles."""
+    target_vehicle = vehicle
+    if not target_vehicle and request.method == "POST":
+        try:
+            body = await request.json()
+            if isinstance(body, dict):
+                target_vehicle = body.get("vehicle") or body.get("product_name")
+        except Exception:
+            pass
+
+    session, cfg = _session()
+    try:
+        if target_vehicle:
+            return _generate_ai_summary(session, cfg, target_vehicle, force_reload=True)
+
+        rows = session.query(IssueCluster.product_name).distinct().all()
+        vehicles = [r[0] for r in rows if r[0]]
+        if not vehicles:
+            rows = session.query(RawFeedback.product_name).distinct().all()
+            vehicles = [r[0] for r in rows if r[0]]
+
+        reloaded = []
+        for v in vehicles:
+            _generate_ai_summary(session, cfg, v, force_reload=True)
+            reloaded.append(v)
+
+        return {
+            "status": "ok",
+            "message": f"Successfully reloaded AI insights for {len(reloaded)} vehicle(s)",
+            "reloaded": reloaded,
+        }
+    finally:
+        session.close()

@@ -49,15 +49,20 @@ def run_if_due() -> dict:
 
     cfg = get_config()
     Session = get_session_factory(cfg["storage"]["db_url"])
-    session = Session()
 
-    if not is_due(session):
-        session.close()
-        return {"ran": False, "reason": "not due yet"}
-
-    log = PipelineRunLog(trigger="scheduled", started_at=datetime.utcnow())
-    session.add(log)
-    session.commit()
+    # Short-lived session just for the due-check + log-row creation — not
+    # held open across the run below. The full pipeline can take minutes to
+    # hours; a connection idle that whole time risks Neon dropping it before
+    # the finally-block commit at the end ever runs (same class of bug fixed
+    # in ingest.py/relevance_filter.py/ontology_discovery.py — this was the
+    # worst case of it, since it used to span the entire run).
+    with Session() as session:
+        if not is_due(session):
+            return {"ran": False, "reason": "not due yet"}
+        log = PipelineRunLog(trigger="scheduled", started_at=datetime.utcnow())
+        session.add(log)
+        session.commit()
+        log_id = log.id
 
     results = {}
     try:
@@ -68,9 +73,12 @@ def run_if_due() -> dict:
         results["aspect_extraction"] = run_aspect_extraction()
         results["cluster_score"] = run_clustering_and_scoring()
     finally:
-        log.finished_at = datetime.utcnow()
-        log.results = results
-        session.commit()
-        session.close()
+        # Fresh session for the closing write — opened only now, after the
+        # run finished, not held open through it.
+        with Session() as session:
+            log = session.query(PipelineRunLog).get(log_id)
+            log.finished_at = datetime.utcnow()
+            log.results = results
+            session.commit()
 
     return {"ran": True, "results": results}

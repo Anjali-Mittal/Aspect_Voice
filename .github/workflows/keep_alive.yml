@@ -1,0 +1,30 @@
+name: Keep Backend Alive
+
+on:
+  schedule:
+    # Trigger every 10 minutes
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Backend Health Endpoint
+        run: |
+          URL="${{ secrets.BACKEND_URL }}"
+          if [ -z "$URL" ]; then
+            echo "BACKEND_URL secret not set, checking BACKEND_URL var..."
+            URL="${{ vars.BACKEND_URL }}"
+          fi
+          if [ -z "$URL" ]; then
+            echo "No custom URL set. Pinging default URL..."
+            URL="https://customer-voice-intelligence.onrender.com"
+          fi
+          echo "Pinging $URL/health..."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$URL/health")
+          echo "HTTP Response Status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" -ne 200 ]; then
+            echo "Warning: Health endpoint returned $HTTP_STATUS"
+            exit 1
+          fi

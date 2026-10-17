@@ -210,7 +210,12 @@ export interface AiSummaryResponse {
   note?: string;
 }
 
-export async function fetchAiSummary(vehicle: string): Promise<AiSummaryResponse> {
-  const { data } = await api.get<AiSummaryResponse>("/insights/ai-summary", { params: { vehicle } });
+export async function fetchAiSummary(vehicle: string, reload: boolean = false): Promise<AiSummaryResponse> {
+  const { data } = await api.get<AiSummaryResponse>("/insights/ai-summary", { params: { vehicle, reload } });
+  return data;
+}
+
+export async function reloadAiSummary(vehicle: string): Promise<AiSummaryResponse> {
+  const { data } = await api.post<AiSummaryResponse>("/insights/ai-summary/reload", null, { params: { vehicle } });
   return data;
 }

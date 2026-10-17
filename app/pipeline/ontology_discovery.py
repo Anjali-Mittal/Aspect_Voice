@@ -3,7 +3,6 @@ from collections import defaultdict
 from app.config import get_config
 from app.models.db import CleanFeedback, FeatureOntology, get_session_factory
 from app.llm.client import call_llm_json
-
 DISCOVERY_PROMPT = """Product: {product_name}
 Below are real customer feedback snippets about this product.
 Read them and discover the distinct FEATURES or ASPECTS people talk about
@@ -34,8 +33,8 @@ Candidates:
 """
 
 
-def _discover_from_batch(batch, product_name: str) -> list[dict]:
-    snippets = "\n".join(f"- {item.clean_text[:400]}" for item in batch)
+def _discover_from_batch(batch: list[str], product_name: str) -> list[dict]:
+    snippets = "\n".join(f"- {text[:400]}" for text in batch)
     prompt = DISCOVERY_PROMPT.format(product_name=product_name, snippets=snippets)
     result = call_llm_json(prompt)
     return result.get("features", [])
@@ -44,31 +43,35 @@ def _discover_from_batch(batch, product_name: str) -> list[dict]:
 def run_ontology_discovery(product_name: str | None = None):
     cfg = get_config()
     Session = get_session_factory(cfg["storage"]["db_url"])
-    session = Session()
     sample_size = cfg["pipeline"]["ontology_discovery_sample_size"]
     batch_size = cfg["pipeline"]["ontology_discovery_batch_size"]
 
-    clean_query = session.query(CleanFeedback).filter(CleanFeedback.is_duplicate_of.is_(None))
-    if product_name:
-        clean_query = clean_query.filter(CleanFeedback.product_name == product_name)
-    clean = clean_query.all()
+    # Short-lived session for this one read, then closed — the batches
+    # below make several slow LLM calls per product with no DB traffic in
+    # between; holding a connection open across all of them risks Neon
+    # dropping it mid-run (same fix as relevance_filter.py).
+    with Session() as session:
+        clean_query = session.query(CleanFeedback).filter(CleanFeedback.is_duplicate_of.is_(None))
+        if product_name:
+            clean_query = clean_query.filter(CleanFeedback.product_name == product_name)
+        clean = [(item.product_name, item.clean_text) for item in clean_query.all()]
+
     if not clean:
-        session.close()
         return {"features": 0, "note": "no clean feedback yet, run ingestion + relevance_filter + cleaning first"}
 
     by_product = defaultdict(list)
-    for item in clean:
-        by_product[item.product_name].append(item)
+    for prod, text in clean:
+        by_product[prod].append(text)
 
     results = {}
-    for product_name, rows in by_product.items():
-        sample = random.sample(rows, min(sample_size, len(rows)))
+    for product_name, texts in by_product.items():
+        sample = random.sample(texts, min(sample_size, len(texts)))
 
         # Chunk into batches so no single LLM call ever gets an unbounded prompt —
         # a 300-item sample in one call would be ~30k tokens; capped at batch_size
         # per call instead (default 50 -> ~5k tokens).
         batches = [sample[i:i + batch_size] for i in range(0, len(sample), batch_size)]
-        print(f"[ontology-discovery] {product_name}: {len(rows)} clean rows, sampled {len(sample)} -> {len(batches)} batches", flush=True)
+        print(f"[ontology-discovery] {product_name}: {len(texts)} clean rows, sampled {len(sample)} -> {len(batches)} batches", flush=True)
 
         candidates: list[dict] = []
         for batch_num, batch in enumerate(batches, start=1):
@@ -86,17 +89,18 @@ def run_ontology_discovery(product_name: str | None = None):
         else:
             final_features = candidates
 
-        # replace existing ontology for this product (rediscovery overwrites)
-        session.query(FeatureOntology).filter_by(product_name=product_name).delete()
-        for f in final_features:
-            session.add(FeatureOntology(
-                product_name=product_name,
-                feature_name=f["name"],
-                description=f.get("description", ""),
-            ))
-        session.commit()
+        # Fresh, short-lived session for this product's write only — opened
+        # right after all the slow LLM calls above, not held through them.
+        with Session() as write_session:
+            write_session.query(FeatureOntology).filter_by(product_name=product_name).delete()
+            for f in final_features:
+                write_session.add(FeatureOntology(
+                    product_name=product_name,
+                    feature_name=f["name"],
+                    description=f.get("description", ""),
+                ))
+            write_session.commit()
         print(f"[ontology-discovery] {product_name} done — {len(final_features)} features", flush=True)
         results[product_name] = {"features": len(final_features), "batches_processed": len(batches)}
 
-    session.close()
     return {"per_product": results}

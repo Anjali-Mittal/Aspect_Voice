@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
-import { fetchAiSummary } from "../api/client";
+import { fetchAiSummary, reloadAiSummary } from "../api/client";
 import type { AiSummaryResponse } from "../api/client";
 import { EmptyState } from "./EmptyState";
 
@@ -114,32 +114,68 @@ export function CompareAiInsightsPanel({ vehicleA, vehicleB }: Props) {
     const [dataA, setDataA] = useState<AiSummaryResponse | null>(null);
     const [dataB, setDataB] = useState<AiSummaryResponse | null>(null);
     const [loading, setLoading] = useState(true);
+    const [reloading, setReloading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
+    const loadData = (force = false) => {
         if (!vehicleA || !vehicleB) return;
-        setLoading(true);
-        setError(null);
-        Promise.all([fetchAiSummary(vehicleA), fetchAiSummary(vehicleB)])
-            .then(([a, b]) => {
-                setDataA(a);
-                setDataB(b);
-            })
-            .catch(() => setError("Could not load AI insights."))
-            .finally(() => setLoading(false));
+        if (force) {
+            setReloading(true);
+            Promise.all([reloadAiSummary(vehicleA), reloadAiSummary(vehicleB)])
+                .then(([a, b]) => {
+                    setDataA(a);
+                    setDataB(b);
+                    setError(null);
+                })
+                .catch(() => setError("Could not reload AI insights."))
+                .finally(() => setReloading(false));
+        } else {
+            setLoading(true);
+            setError(null);
+            Promise.all([fetchAiSummary(vehicleA), fetchAiSummary(vehicleB)])
+                .then(([a, b]) => {
+                    setDataA(a);
+                    setDataB(b);
+                })
+                .catch(() => setError("Could not load AI insights."))
+                .finally(() => setLoading(false));
+        }
+    };
+
+    useEffect(() => {
+        loadData(false);
     }, [vehicleA, vehicleB]);
 
     if (loading) {
         return (
             <section>
-                <h2 className="mb-3 text-sm font-semibold text-slate-700">AI Insights</h2>
+                <div className="mb-3 flex items-center justify-between">
+                    <h2 className="text-sm font-semibold text-slate-700">AI Insights</h2>
+                </div>
                 <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-400 shadow-sm">
                     Generating…
                 </div>
             </section>
         );
     }
-    if (error) return <EmptyState message={error} />;
+    if (error) {
+        return (
+            <section>
+                <div className="mb-3 flex items-center justify-between">
+                    <h2 className="text-sm font-semibold text-slate-700">AI Insights</h2>
+                    <button
+                        onClick={() => loadData(true)}
+                        disabled={loading || reloading}
+                        className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 shadow-xs transition hover:bg-slate-50 hover:text-slate-900 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                        title="Retry loading AI insights"
+                    >
+                        <span>Retry</span>
+                    </button>
+                </div>
+                <EmptyState message={error} />
+            </section>
+        );
+    }
     if (!dataA || !dataB) return null;
 
     const topA = dataA.issues?.[0];
@@ -147,7 +183,27 @@ export function CompareAiInsightsPanel({ vehicleA, vehicleB }: Props) {
 
     return (
         <section>
-            <h2 className="mb-3 text-sm font-semibold text-slate-700">AI Insights</h2>
+            <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-slate-700">AI Insights</h2>
+                <button
+                    onClick={() => loadData(true)}
+                    disabled={loading || reloading}
+                    className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 shadow-xs transition hover:bg-slate-50 hover:text-slate-900 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                    title="Regenerate AI insights with the latest data"
+                >
+                    <svg
+                        className={`h-3.5 w-3.5 text-slate-500 ${reloading ? "animate-spin" : ""}`}
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                    >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <span>{reloading ? "Reloading…" : "Reload"}</span>
+                </button>
+            </div>
             <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                 {topA && topB && (
                     <p className="mb-5 border-b border-slate-100 pb-4 text-sm text-slate-600">
